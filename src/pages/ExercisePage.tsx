@@ -1,10 +1,22 @@
 import { useLiveQuery } from "dexie-react-hooks";
 import { useState } from "react";
-import { Link, useParams, useSearchParams } from "react-router-dom";
+import {
+  Link,
+  useLocation,
+  useParams,
+  useSearchParams,
+} from "react-router-dom";
 import { db } from "../db/db";
 import { exerciseComponents } from "../exercises";
-import { EXERCISES } from "../logic/config";
-import { applyAttempt, calcPoints, sameDay } from "../logic/progress";
+import { DIFFICULTY_LABEL, EXERCISES } from "../logic/config";
+import {
+  applyAttempt,
+  calcPoints,
+  exerciseLink,
+  recommend,
+  sameDay,
+  type Recommendation,
+} from "../logic/progress";
 import type { Attempt, Difficulty, ExerciseId } from "../types";
 
 interface Outcome {
@@ -12,9 +24,16 @@ interface Outcome {
   leveledUp: boolean;
   leveledDown: number;
   newLevel: number;
+  next: Recommendation;
 }
 
+/** key по location.key: при переходе к следующему упражнению состояние сбрасывается */
 export default function ExercisePage() {
+  const location = useLocation();
+  return <ExerciseInner key={location.key} />;
+}
+
+function ExerciseInner() {
   const params = useParams();
   const textId = Number(params.id);
   const exerciseId = params.exerciseId as ExerciseId;
@@ -62,6 +81,7 @@ export default function ExercisePage() {
       leveledUp: result.leveledUp,
       leveledDown: result.leveledDown,
       newLevel: result.text.level,
+      next: recommend(result.text, [...history, attempt], now),
     });
   }
 
@@ -81,9 +101,19 @@ export default function ExercisePage() {
         {outcome.leveledDown > 0 && (
           <p>Уровень снижен до {outcome.newLevel}. Повторим скоро.</p>
         )}
-        <Link className="btn primary" to={`/text/${textId}`}>
-          К тексту
-        </Link>
+        <div className="result-actions">
+          <Link
+            className="btn primary"
+            replace
+            to={exerciseLink(textId, outcome.next)}
+          >
+            Дальше: {EXERCISES[outcome.next.exercise].title} ·{" "}
+            {DIFFICULTY_LABEL[outcome.next.difficulty].toLowerCase()}
+          </Link>
+          <Link className="btn ghost" to={`/text/${textId}`}>
+            К тексту
+          </Link>
+        </div>
       </div>
     );
   }

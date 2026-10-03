@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Attempt, ExerciseId, TextItem } from "../types";
 import { DAY } from "./config";
-import { applyAttempt, calcPoints, createText } from "./progress";
+import { applyAttempt, calcPoints, createText, recommend } from "./progress";
 
 const T0 = new Date("2026-01-01T10:00:00").getTime();
 
@@ -101,5 +101,52 @@ describe("applyAttempt", () => {
       T0 + DAY,
     );
     expect(r.text.level).toBe(3);
+  });
+});
+
+describe("recommend", () => {
+  it("новый текст — знакомство", () => {
+    const r = recommend(createText("t", "a b", T0), [], T0);
+    expect(r.difficulty).toBe(1);
+    expect(["revealTap", "partialHidden"]).toContain(r.exercise);
+  });
+
+  it("на уровне 1 после знакомства сначала запоминание, затем проверка", () => {
+    const text = createText("t", "a b", T0);
+    const h1 = [attempt("revealTap", 1, 100, T0 + 1)];
+    expect(["firstLetters", "fillGaps", "orderBlocks"]).toContain(
+      recommend(text, h1, T0 + 2).exercise,
+    );
+    const h2 = [...h1, attempt("fillGaps", 1, 95, T0 + 3)];
+    expect(["fullInput", "nextLine", "findError", "lineEnding"]).toContain(
+      recommend(text, h2, T0 + 4).exercise,
+    );
+  });
+
+  it("когда пора повторять, предлагает проверку из группы 3 на нужной сложности", () => {
+    const text: TextItem = {
+      ...createText("t", "a b", T0),
+      level: 3,
+      nextReviewAt: T0 + DAY,
+    };
+    const r = recommend(text, [attempt("fillGaps", 1, 95, T0)], T0 + 4 * DAY);
+    expect(["fullInput", "nextLine", "findError", "lineEnding"]).toContain(
+      r.exercise,
+    );
+    expect(r.difficulty).toBe(2);
+  });
+
+  it("чередует упражнения: давно не делавшееся — первым", () => {
+    const text: TextItem = {
+      ...createText("t", "a b", T0),
+      level: 3,
+      nextReviewAt: T0,
+    };
+    const history = [
+      attempt("fullInput", 2, 95, T0 + 1),
+      attempt("nextLine", 2, 95, T0 + 2),
+      attempt("findError", 2, 95, T0 + 3),
+    ];
+    expect(recommend(text, history, T0 + DAY).exercise).toBe("lineEnding");
   });
 });

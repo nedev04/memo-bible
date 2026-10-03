@@ -62,7 +62,7 @@ export default function TextEditPage() {
         <button className="btn primary" disabled={!valid} onClick={save}>
           Сохранить
         </button>
-        <Link className="btn ghost" to={editing ? `/text/${id}` : "/"}>
+        <Link className="btn ghost" to={editing ? `/text/${id}` : "/texts"}>
           Отмена
         </Link>
       </div>

@@ -9,7 +9,13 @@ import {
   INTERVAL_DAYS,
   MAX_LEVEL,
 } from "../logic/config";
-import { dueLabel, levelUpBlockers, pointsNeeded } from "../logic/progress";
+import {
+  dueLabel,
+  exerciseLink,
+  levelUpBlockers,
+  pointsNeeded,
+  recommend,
+} from "../logic/progress";
 import type { Difficulty, ExerciseId, Group } from "../types";
 
 const GROUPS: Group[] = [1, 2, 3];
@@ -29,17 +35,18 @@ export default function TextDetailPage() {
   const pointsFull =
     text.level < MAX_LEVEL && text.levelPoints >= pointsNeeded(text.level);
   const blockers = pointsFull ? levelUpBlockers(text, attempts, now) : [];
+  const rec = recommend(text, attempts, now);
 
   async function remove() {
     if (confirm("Удалить текст вместе с историей?")) {
       await deleteText(id);
-      navigate("/");
+      navigate("/texts");
     }
   }
 
   return (
     <>
-      <Link to="/" className="back">
+      <Link to="/texts" className="back">
         ← Все тексты
       </Link>
       <h1>{text.title}</h1>
@@ -68,6 +75,14 @@ export default function TextDetailPage() {
             </ul>
           </div>
         )}
+      </section>
+
+      <section className="recommend">
+        <small>Рекомендуем · {rec.reason}</small>
+        <Link className="btn primary" to={exerciseLink(id, rec)}>
+          {EXERCISES[rec.exercise].title} ·{" "}
+          {DIFFICULTY_LABEL[rec.difficulty].toLowerCase()}
+        </Link>
       </section>
 
       {GROUPS.map((g) => (

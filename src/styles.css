@@ -58,12 +58,31 @@ small {
 .top {
   padding: calc(env(safe-area-inset-top, 0px) + 0.8rem) 1rem 0.8rem;
   border-bottom: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
 }
-.top a {
+.top .brand {
   text-decoration: none;
   font-family: var(--font-text);
   font-size: 1.25rem;
   font-weight: 700;
+}
+.top nav {
+  display: flex;
+  gap: 0.3rem;
+}
+.top nav a {
+  text-decoration: none;
+  padding: 0.4rem 0.7rem;
+  border-radius: 8px;
+  color: var(--muted);
+  font-weight: 600;
+}
+.top nav a.active {
+  color: var(--ink);
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
 }
 main {
   max-width: 640px;
@@ -592,4 +611,46 @@ a,
   color: var(--bad);
   text-decoration: line-through;
   text-decoration-style: dashed;
+}
+
+/* Экран «Сегодня» */
+.muted {
+  color: var(--muted);
+  margin: -0.5rem 0 0.5rem;
+}
+.today-item {
+  padding: 1rem 0;
+}
+.today-item .title-link {
+  text-decoration: none;
+}
+.today-item .title-link strong {
+  font-size: 1.05rem;
+}
+.reason {
+  margin: 0.7rem 0 0.5rem;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+.btn.start {
+  display: block;
+  width: 100%;
+}
+.recommend {
+  margin: 1.2rem 0 0;
+  padding: 0.9rem 1rem;
+  border-left: 4px solid var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+.recommend small {
+  margin-bottom: 0.5rem;
+}
+.recommend .btn {
+  display: block;
+}
+.result-actions {
+  display: grid;
+  gap: 0.6rem;
+  max-width: 22rem;
+  margin: 1.5rem auto 0;
 }
