@@ -3,6 +3,7 @@
 React + TypeScript + Vite, данные хранятся локально (IndexedDB через Dexie).
 
 ## Запуск
+
 ```
 npm install
 npm run dev      # разработка
@@ -11,6 +12,7 @@ npm run build    # сборка в dist/
 ```
 
 ## Структура
+
 - `src/logic/config.ts` — все числа: интервалы, пороги очков, очки за упражнения. Меняйте здесь.
 - `src/logic/progress.ts` — очки, уровни, условия повышения и понижения (чистые функции, покрыты тестами).
 - `src/logic/parser.ts` — разбор текста на строки и слова.
@@ -20,5 +22,6 @@ npm run build    # сборка в dist/
 - `src/db/db.ts` — база (Dexie).
 
 ## Бесплатный хостинг
+
 Сборка статическая (HashRouter, `base: './'`), подойдёт GitHub Pages, Cloudflare Pages или Netlify:
 команда сборки `npm run build`, папка публикации `dist`.
