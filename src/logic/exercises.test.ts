@@ -1,10 +1,17 @@
 import { describe, expect, it } from "vitest";
 import {
   buildBlocks,
+  buildErrors,
   buildGaps,
+  buildLineEnding,
+  buildNextLineTasks,
+  buildPartialMask,
   flattenWords,
+  groupLines,
+  judgeTyped,
   scoreOrder,
   shuffleBlocks,
+  toLines,
   visibleMask,
 } from "./exercises";
 
@@ -108,5 +115,83 @@ describe("visibleMask", () => {
     const words = flattenWords("Раз — два три");
     expect(visibleMask(words, 1).every(Boolean)).toBe(true);
     expect(visibleMask(words, 3)).toEqual([false, true, false, false]);
+  });
+});
+
+describe("judgeTyped", () => {
+  it("засчитывает слово по совпадению, пробелу или длине", () => {
+    expect(judgeTyped("Тебе", "тебе")).toBe("ok");
+    expect(judgeTyped("ёж", "еж")).toBe("ok");
+    expect(judgeTyped("теб", "тебе")).toBe("wait");
+    expect(judgeTyped("теб ", "тебе")).toBe("bad");
+    expect(judgeTyped("тебя", "тебе")).toBe("bad");
+    expect(judgeTyped("тебе,", "тебе")).toBe("ok");
+    expect(judgeTyped("   ", "тебе")).toBe("wait");
+  });
+});
+
+describe("groupLines / toLines", () => {
+  it("группирует слова по строкам", () => {
+    const spans = groupLines(flattenWords(TEXT));
+    expect(spans.length).toBe(8);
+    expect(spans[4].blankBefore).toBe(true);
+  });
+  it("режет прозу на «строки»", () => {
+    expect(toLines(LONG_PARAGRAPH).length).toBeGreaterThanOrEqual(10);
+    expect(toLines(TEXT).length).toBe(8);
+  });
+});
+
+describe("buildPartialMask", () => {
+  it("на лёгком скрыто меньше, чем на тяжёлом; первая буква в частично скрытых остаётся", () => {
+    const words = flattenWords(LONG_LINES);
+    const easy = buildPartialMask(words, 1, seeded(1)).filter(Boolean).length;
+    const hard = buildPartialMask(words, 3, seeded(1)).filter(Boolean).length;
+    expect(easy).toBeLessThan(hard);
+    buildPartialMask(words, 1, seeded(2)).forEach((m, i) => {
+      if (m && m.includes("_") && !/^_+$/.test(m))
+        expect(m[0]).toBe(words[i].core[0]);
+    });
+  });
+});
+
+describe("buildNextLineTasks", () => {
+  it("на тяжёлом нужно ввести две строки, на лёгком подставлено первое слово", () => {
+    const lines = toLines(TEXT);
+    const easy = buildNextLineTasks(lines, 1, seeded(3));
+    const hard = buildNextLineTasks(lines, 3, seeded(3));
+    expect(easy[0].answer.length).toBe(1);
+    expect(easy[0].givenCount).toBe(1);
+    expect(hard[0].answer.length).toBe(2);
+    expect(easy.length).toBe(3);
+  });
+  it("для одной строки заданий нет", () => {
+    expect(buildNextLineTasks([["а", "б"]], 1)).toEqual([]);
+  });
+});
+
+describe("buildLineEnding", () => {
+  it("на тяжёлом скрыто больше слов", () => {
+    const lines = toLines(TEXT);
+    const hidden = (d: 1 | 2 | 3) =>
+      buildLineEnding(lines, d, seeded(4)).given.filter((g) => !g).length;
+    expect(hidden(1)).toBeLessThan(hidden(2));
+    expect(hidden(2)).toBeLessThan(hidden(3));
+  });
+});
+
+describe("buildErrors", () => {
+  it("ошибки не соседние, исправление входит в варианты, подмена отличается от оригинала", () => {
+    const words = flattenWords(LONG_LINES);
+    for (const d of [1, 2, 3] as const) {
+      const errs = buildErrors(words, d, seeded(d));
+      expect(errs.length).toBeGreaterThanOrEqual(3);
+      errs.forEach((e, i) => {
+        expect(e.options).toContain(e.original);
+        expect(e.fake.toLowerCase()).not.toBe(e.original.toLowerCase());
+        if (i > 0)
+          expect(e.wordIndex - errs[i - 1].wordIndex).toBeGreaterThan(1);
+      });
+    }
   });
 });
