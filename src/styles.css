@@ -106,3 +106,45 @@ main { max-width: 640px; margin: 0 auto; padding: 1rem; }
 .result .good { color: var(--good); font-weight: 700; font-size: 1.2rem; }
 
 @media (prefers-reduced-motion: reduce) { .pbar-fill { transition: none; } }
+
+/* Общие стили упражнений */
+.exwrap { padding-bottom: 5rem; }
+.exwrap .hint { color: var(--muted); font-size: 0.95rem; }
+.flow { font-family: var(--font-text); font-size: 1.35rem; line-height: 1.9; padding: 0.5rem 0 1rem; }
+.flow .cur { background: var(--mark); color: #14323a; padding: 0 0.2em; border-radius: 3px; }
+.flow .cur.w-1 { animation: nudge 0.25s; }
+.flow .missed { text-decoration: underline wavy var(--bad); text-underline-offset: 4px; }
+@keyframes nudge { 25% { transform: translateX(-3px); } 75% { transform: translateX(3px); } }
+
+.letter-input {
+  width: 5rem; padding: 0.55rem; font: inherit; text-align: center; border-radius: 8px;
+  background: transparent; color: var(--ink); border: 2px solid var(--accent);
+}
+.reveal-bar.col { flex-direction: column; align-items: stretch; }
+.reveal-bar .full { width: 100%; }
+.options { display: flex; flex-wrap: wrap; gap: 0.5rem; justify-content: center; }
+.options .btn { font-family: var(--font-text); font-size: 1.1rem; }
+.options .btn:disabled { text-decoration: line-through; }
+
+.gap {
+  font: inherit; border: none; border-bottom: 3px solid var(--muted); background: transparent;
+  color: inherit; cursor: pointer; padding: 0 0.2em; min-width: 4rem;
+}
+.gap.cur { border-bottom-color: var(--mark); background: color-mix(in srgb, var(--mark) 35%, transparent); }
+.filled { color: var(--good); font-weight: 600; }
+
+.blocks { list-style: none; padding: 0; margin: 0 0 1rem; display: grid; gap: 0.5rem; }
+.blocks.placed { list-style: decimal; padding-left: 1.6rem; }
+.blocks.placed li::marker { color: var(--muted); font-weight: 700; }
+.block {
+  display: block; width: 100%; text-align: left; font-family: var(--font-text); font-size: 1.1rem; line-height: 1.5;
+  white-space: pre-line; padding: 0.7rem 0.9rem; border-radius: 8px; cursor: pointer;
+  background: transparent; color: var(--ink); border: 1px solid var(--line);
+}
+.block.ok { border-color: var(--good); background: color-mix(in srgb, var(--good) 14%, transparent); }
+.block.bad { border-color: var(--bad); background: color-mix(in srgb, var(--bad) 14%, transparent); }
+.block.static { cursor: default; }
+.block:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.empty { color: var(--muted); }
+
+@media (prefers-reduced-motion: reduce) { .flow .cur.w-1 { animation: none; } }
