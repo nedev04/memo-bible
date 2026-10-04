@@ -1,7 +1,7 @@
 import { useLiveQuery } from 'dexie-react-hooks'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import LevelProgress from '../components/LevelProgress'
-import { db, deleteText } from '../db/db'
+import { db, deleteText, getLiveText } from '../db/db'
 import { DIFFICULTY_LABEL, EXERCISES, GROUP_TITLES, INTERVAL_DAYS, MAX_LEVEL } from '../logic/config'
 import { dueLabel, exerciseLink, levelUpBlockers, pointsNeeded, recommend } from '../logic/progress'
 import type { Difficulty, ExerciseId, Group } from '../types'
@@ -11,7 +11,7 @@ const GROUPS: Group[] = [1, 2, 3]
 export default function TextDetailPage() {
   const id = Number(useParams().id)
   const navigate = useNavigate()
-  const text = useLiveQuery(() => db.texts.get(id), [id])
+  const text = useLiveQuery(() => getLiveText(id), [id])
   const attempts = useLiveQuery(() => db.attempts.where('textId').equals(id).toArray(), [id])
 
   if (!text || !attempts) return null

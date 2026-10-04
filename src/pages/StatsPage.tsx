@@ -1,5 +1,5 @@
 import { useLiveQuery } from 'dexie-react-hooks'
-import { db } from '../db/db'
+import { db, liveTexts } from '../db/db'
 import { EXERCISES, MAX_LEVEL } from '../logic/config'
 import { dailyStats, exerciseStats, levelDistribution, memoryAccuracy, streaks } from '../logic/stats'
 
@@ -24,7 +24,7 @@ function Meter({ value, max }: { value: number; max: number }) {
 }
 
 export default function StatsPage() {
-  const texts = useLiveQuery(() => db.texts.toArray(), [])
+  const texts = useLiveQuery(() => liveTexts(), [])
   const attempts = useLiveQuery(() => db.attempts.toArray(), [])
   if (!texts || !attempts) return null
 

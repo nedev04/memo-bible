@@ -5,7 +5,7 @@ import { db } from '../db/db'
 import { dueLabel } from '../logic/progress'
 
 export default function TextsPage() {
-  const texts = useLiveQuery(() => db.texts.orderBy('nextReviewAt').toArray(), [])
+  const texts = useLiveQuery(() => db.texts.orderBy('nextReviewAt').filter((t) => !t.deletedAt).toArray(), [])
   const now = Date.now()
 
   if (!texts) return null

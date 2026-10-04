@@ -6,7 +6,7 @@ const NOON = new Date('2026-03-10T12:00:00').getTime()
 const DAY = 86400000
 
 function at(daysAgo: number, exercise: ExerciseId = 'fillGaps', score = 100, points = 8): Attempt {
-  return { textId: 1, exercise, difficulty: 1, score, points, createdAt: NOON - daysAgo * DAY }
+  return { uid: `a-${daysAgo}-${exercise}-${score}`, textId: 1, textUid: 't', exercise, difficulty: 1, score, points, createdAt: NOON - daysAgo * DAY }
 }
 
 describe('streaks', () => {

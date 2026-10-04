@@ -6,20 +6,31 @@ import TextDetailPage from './pages/TextDetailPage'
 import TextEditPage from './pages/TextEditPage'
 import TextsPage from './pages/TextsPage'
 import TodayPage from './pages/TodayPage'
+import { SyncProvider, useSync } from './sync/SyncProvider'
+
+function Header() {
+  const { user, status } = useSync()
+  const mark = status === 'error' ? ' error' : status === 'syncing' ? ' busy' : ''
+  const title = status === 'error' ? 'Ошибка синхронизации' : 'Данные, облако и резервная копия'
+  return (
+    <header className="top">
+      <Link to="/" className="brand">Наизусть</Link>
+      <nav>
+        <NavLink to="/" end>Сегодня</NavLink>
+        <NavLink to="/texts">Тексты</NavLink>
+        <NavLink to="/stats">Статистика</NavLink>
+        <NavLink to="/data" className={`gear${user ? ' cloud' : ''}${mark}`} aria-label={title} title={title}>⚙</NavLink>
+      </nav>
+    </header>
+  )
+}
 
 // HashRouter — чтобы работало на статическом хостинге без настройки серверных редиректов
 export default function App() {
   return (
+    <SyncProvider>
     <HashRouter>
-      <header className="top">
-        <Link to="/" className="brand">Наизусть</Link>
-        <nav>
-          <NavLink to="/" end>Сегодня</NavLink>
-          <NavLink to="/texts">Тексты</NavLink>
-          <NavLink to="/stats">Статистика</NavLink>
-          <NavLink to="/data" className="gear" aria-label="Данные и резервная копия" title="Данные и резервная копия">⚙</NavLink>
-        </nav>
-      </header>
+      <Header />
       <main>
         <Routes>
           <Route path="/" element={<TodayPage />} />
@@ -33,5 +44,6 @@ export default function App() {
         </Routes>
       </main>
     </HashRouter>
+    </SyncProvider>
   )
 }

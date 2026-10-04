@@ -257,3 +257,14 @@ button, a, .reveal, .exwrap { touch-action: manipulation; }
 .pending { margin-top: 1rem; padding: 0.9rem 1rem; border: 1px solid var(--line); border-radius: 8px; }
 .pending p { margin-top: 0; }
 input[type="file"] { max-width: 100%; color: var(--ink); }
+
+/* Индикатор синхронизации на значке данных */
+.top nav a.gear { position: relative; }
+.top nav a.gear.cloud::after, .top nav a.gear.error::after {
+  content: ''; position: absolute; top: 0.25rem; right: 0.2rem; width: 0.5rem; height: 0.5rem; border-radius: 50%;
+  background: var(--accent);
+}
+.top nav a.gear.busy::after { animation: pulse 1s ease-in-out infinite; }
+.top nav a.gear.error::after { background: var(--bad); }
+@keyframes pulse { 50% { opacity: 0.25; } }
+@media (prefers-reduced-motion: reduce) { .top nav a.gear.busy::after { animation: none; } }

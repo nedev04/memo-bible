@@ -6,7 +6,7 @@ import { applyAttempt, calcPoints, createText, recommend } from './progress'
 const T0 = new Date('2026-01-01T10:00:00').getTime()
 
 function attempt(exercise: ExerciseId, difficulty: 1 | 2 | 3, score: number, at: number, points = 10): Attempt {
-  return { textId: 1, exercise, difficulty, score, points, createdAt: at }
+  return { uid: `a-${at}-${exercise}`, textId: 1, textUid: 't', exercise, difficulty, score, points, createdAt: at }
 }
 
 describe('calcPoints', () => {

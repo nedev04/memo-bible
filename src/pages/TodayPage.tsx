@@ -1,14 +1,16 @@
 import { useLiveQuery } from 'dexie-react-hooks'
 import { Link } from 'react-router-dom'
+import { useSync } from '../sync/SyncProvider'
 import LevelProgress from '../components/LevelProgress'
 import { getLastBackup } from '../db/backupMeta'
-import { db } from '../db/db'
+import { db, liveTexts } from '../db/db'
 import { DIFFICULTY_LABEL, EXERCISES } from '../logic/config'
 import { dueLabel, exerciseLink, overdueLabel, recommend, sameDay } from '../logic/progress'
 import type { Attempt } from '../types'
 
 export default function TodayPage() {
-  const texts = useLiveQuery(() => db.texts.toArray(), [])
+  const { user } = useSync()
+  const texts = useLiveQuery(() => liveTexts(), [])
   const attempts = useLiveQuery(() => db.attempts.toArray(), [])
   if (!texts || !attempts) return null
 
@@ -20,7 +22,7 @@ export default function TodayPage() {
   const later = texts.filter((t) => now < t.nextReviewAt).sort((a, b) => a.nextReviewAt - b.nextReviewAt)
 
   const lastBackup = getLastBackup()
-  const needBackup = texts.length > 0 && (lastBackup === null || now - lastBackup > 14 * 24 * 60 * 60 * 1000)
+  const needBackup = !user && texts.length > 0 && (lastBackup === null || now - lastBackup > 14 * 24 * 60 * 60 * 1000)
 
   const todays = attempts.filter((a) => sameDay(a.createdAt, now))
   const todayPoints = todays.reduce((n, a) => n + a.points, 0)

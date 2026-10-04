@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { db } from '../db/db'
+import { db, getLiveText } from '../db/db'
 import { createText } from '../logic/progress'
 
 export default function TextEditPage() {
@@ -12,7 +12,7 @@ export default function TextEditPage() {
 
   useEffect(() => {
     if (!editing) return
-    db.texts.get(Number(id)).then((t) => {
+    getLiveText(Number(id)).then((t) => {
       if (t) {
         setTitle(t.title)
         setContent(t.content)

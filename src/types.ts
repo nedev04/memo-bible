@@ -13,7 +13,10 @@ export type ExerciseId =
   | 'lineEnding'
 
 export interface TextItem {
+  /** Локальный числовой id (в адресах страниц) */
   id?: number
+  /** Глобальный id для синхронизации между устройствами */
+  uid: string
   title: string
   content: string
   createdAt: number
@@ -27,15 +30,26 @@ export interface TextItem {
   lastLevelUpAt: number | null
   /** Когда пора повторять */
   nextReviewAt: number
+  /** Когда запись менялась последний раз (для синхронизации: побеждает более новая) */
+  updatedAt: number
+  /** Когда текст удалили (запись остаётся до отправки в облако) */
+  deletedAt?: number | null
+  /** 1 — есть изменения, ещё не отправленные в облако */
+  dirty?: 0 | 1
 }
 
 export interface Attempt {
   id?: number
+  /** Глобальный id попытки (попытки не меняются, при синхронизации только добавляются) */
+  uid: string
   textId: number
+  /** uid текста, к которому относится попытка */
+  textUid: string
   exercise: ExerciseId
   difficulty: Difficulty
   /** Точность 0–100 */
   score: number
   points: number
   createdAt: number
+  dirty?: 0 | 1
 }

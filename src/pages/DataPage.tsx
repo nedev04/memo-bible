@@ -1,6 +1,7 @@
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useRef, useState } from 'react'
-import { clearAll, db, exportAll, importBackup } from '../db/db'
+import { clearAll, countLiveTexts, db, exportAll, importBackup } from '../db/db'
+import CloudSection from './CloudSection'
 import { getLastBackup, setLastBackup } from '../db/backupMeta'
 import { backupFileName, createBackup, parseBackup, type BackupData } from '../logic/backup'
 
@@ -19,7 +20,7 @@ function download(filename: string, text: string) {
 const fmt = (t: number) => new Date(t).toLocaleString('ru-RU', { dateStyle: 'long', timeStyle: 'short' })
 
 export default function DataPage() {
-  const textCount = useLiveQuery(() => db.texts.count(), [])
+  const textCount = useLiveQuery(() => countLiveTexts(), [])
   const attemptCount = useLiveQuery(() => db.attempts.count(), [])
   const [lastBackup, setLast] = useState<number | null>(() => getLastBackup())
   const [pending, setPending] = useState<BackupData | null>(null)
@@ -69,9 +70,11 @@ export default function DataPage() {
     <>
       <h1>Данные</h1>
       <p className="muted-block">
-        Всё хранится только в браузере на этом устройстве. Очистка данных сайта или смена телефона сотрут тексты и прогресс,
-        поэтому периодически сохраняйте резервную копию.
+        Данные хранятся в браузере на этом устройстве. Очистка данных сайта или смена телефона сотрут тексты и прогресс,
+        если не подключено облако. Резервная копия в файле защитит и в этом случае.
       </p>
+
+      <CloudSection />
 
       {message && <p className={message.kind === 'ok' ? 'notice ok' : 'notice error'} role="status">{message.text}</p>}
 
@@ -103,6 +106,7 @@ export default function DataPage() {
       )}
 
       <h2>Удаление</h2>
+      <p className="muted-block">Если вы вошли в облако, удаление распространится и на другие устройства.</p>
       <button className="btn danger" onClick={doClear} disabled={!textCount}>Удалить все данные</button>
     </>
   )

@@ -1,3 +1,4 @@
+import { uuid } from '../lib/uuid'
 import type { Attempt, Difficulty, ExerciseId, Group, TextItem } from '../types'
 import {
   BAD_SCORE, DAY, DIFFICULTY_LABEL, DIFFICULTY_MULT, EXERCISES, GROUP_TITLES,
@@ -41,6 +42,7 @@ export function pointsNeeded(level: number): number {
 
 export function createText(title: string, content: string, now: number): TextItem {
   return {
+    uid: uuid(),
     title,
     content,
     createdAt: now,
@@ -49,6 +51,7 @@ export function createText(title: string, content: string, now: number): TextIte
     levelChangedAt: now,
     lastLevelUpAt: null,
     nextReviewAt: now,
+    updatedAt: now,
   }
 }
 

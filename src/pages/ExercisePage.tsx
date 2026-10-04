@@ -1,7 +1,8 @@
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useState } from 'react'
 import { Link, useLocation, useParams, useSearchParams } from 'react-router-dom'
-import { db } from '../db/db'
+import { db, getLiveText } from '../db/db'
+import { uuid } from '../lib/uuid'
 import { exerciseComponents } from '../exercises'
 import { DIFFICULTY_LABEL, EXERCISES } from '../logic/config'
 import { applyAttempt, calcPoints, exerciseLink, recommend, sameDay, type Recommendation } from '../logic/progress'
@@ -29,7 +30,7 @@ function ExerciseInner() {
   const d = Number(search.get('d'))
   const difficulty = (d >= 1 && d <= 3 ? d : 1) as Difficulty
 
-  const text = useLiveQuery(() => db.texts.get(textId), [textId])
+  const text = useLiveQuery(() => getLiveText(textId), [textId])
   const [outcome, setOutcome] = useState<Outcome | null>(null)
 
   const Exercise = exerciseComponents[exerciseId]
@@ -44,7 +45,9 @@ function ExerciseInner() {
       (a) => a.exercise === exerciseId && a.difficulty === difficulty && sameDay(a.createdAt, now),
     ).length
     const attempt: Attempt = {
+      uid: uuid(),
       textId,
+      textUid: text.uid,
       exercise: exerciseId,
       difficulty,
       score,

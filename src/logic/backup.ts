@@ -5,8 +5,8 @@ export const BACKUP_APP_ID = 'memorize-by-heart'
 export const BACKUP_VERSION = 1
 
 /** Текст в резервной копии. id нужен, чтобы связать с ним попытки при импорте. */
-export type BackupText = TextItem & { id: number }
-export type BackupAttempt = Omit<Attempt, 'id'>
+export type BackupText = Omit<TextItem, 'uid' | 'updatedAt' | 'deletedAt' | 'dirty'> & { id: number }
+export type BackupAttempt = Omit<Attempt, 'id' | 'uid' | 'textUid' | 'dirty'>
 
 export interface BackupData {
   texts: BackupText[]
@@ -17,13 +17,34 @@ export interface BackupData {
 }
 
 export function createBackup(texts: TextItem[], attempts: Attempt[], now: number): string {
+  const live = texts.filter((t) => !t.deletedAt && t.id !== undefined)
+  const ids = new Set(live.map((t) => t.id))
   return JSON.stringify(
     {
       app: BACKUP_APP_ID,
       version: BACKUP_VERSION,
       exportedAt: now,
-      texts,
-      attempts: attempts.map(({ id: _id, ...rest }) => rest),
+      texts: live.map((t) => ({
+        id: t.id,
+        title: t.title,
+        content: t.content,
+        createdAt: t.createdAt,
+        level: t.level,
+        levelPoints: t.levelPoints,
+        levelChangedAt: t.levelChangedAt,
+        lastLevelUpAt: t.lastLevelUpAt,
+        nextReviewAt: t.nextReviewAt,
+      })),
+      attempts: attempts
+        .filter((a) => ids.has(a.textId))
+        .map((a) => ({
+          textId: a.textId,
+          exercise: a.exercise,
+          difficulty: a.difficulty,
+          score: a.score,
+          points: a.points,
+          createdAt: a.createdAt,
+        })),
     },
     null,
     2,
