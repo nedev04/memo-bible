@@ -2,11 +2,14 @@ import Dexie, { type Table, type Transaction } from 'dexie'
 import { uuid } from '../lib/uuid'
 import type { BackupData } from '../logic/backup'
 import { getSyncUserId } from '../sync/syncMeta'
-import type { Attempt, TextItem } from '../types'
+import type { VerseRef } from '../bible/types'
+import { TRANSLATION, verseKey } from '../bible/refs'
+import type { Attempt, TextItem, VerseState } from '../types'
 
 class AppDB extends Dexie {
   texts!: Table<TextItem, number>
   attempts!: Table<Attempt, number>
+  verses!: Table<VerseState, string>
 
   constructor() {
     super('memorize-by-heart')
@@ -41,6 +44,10 @@ class AppDB extends Dexie {
           a.dirty = 1
         })
       })
+    // v3: стихи Библии, которые пользователь учит
+    this.version(3).stores({
+      verses: 'key, book, nextReviewAt, dirty',
+    })
   }
 }
 
@@ -77,6 +84,18 @@ db.attempts.hook('creating', (_key, obj, tx) => {
   notifyChanged()
 })
 
+db.verses.hook('creating', (_key, obj, tx) => {
+  if (isSyncTx(tx)) return
+  obj.updatedAt = Date.now()
+  obj.dirty = 1
+  notifyChanged()
+})
+db.verses.hook('updating', (_mods, _key, _obj, tx) => {
+  if (isSyncTx(tx)) return
+  notifyChanged()
+  return { updatedAt: Date.now(), dirty: 1 }
+})
+
 // ---------- Запросы ----------
 
 /** Тексты без удалённых (удалённые некоторое время хранятся как «надгробия» до отправки в облако) */
@@ -87,7 +106,8 @@ export async function getLiveText(id: number): Promise<TextItem | undefined> {
   return t && !t.deletedAt ? t : undefined
 }
 
-export const countLiveTexts = () => db.texts.filter((t) => !t.deletedAt).count()
+export const countLiveTexts = async () =>
+  (await db.texts.filter((t) => !t.deletedAt).count()) + (await db.verses.filter((v) => !v.deletedAt).count())
 
 /**
  * Удаление текста. Если устройство синхронизируется, запись остаётся с пометкой deletedAt,
@@ -104,15 +124,18 @@ export async function deleteText(id: number) {
 async function removeEverythingInTx() {
   await db.attempts.clear()
   if (getSyncUserId()) {
-    await db.texts.filter((t) => !t.deletedAt).modify({ deletedAt: Date.now() })
+    const now = Date.now()
+    await db.texts.filter((t) => !t.deletedAt).modify({ deletedAt: now })
+    await db.verses.filter((v) => !v.deletedAt).modify({ deletedAt: now })
   } else {
     await db.texts.clear()
+    await db.verses.clear()
   }
 }
 
-export async function exportAll(): Promise<{ texts: TextItem[]; attempts: Attempt[] }> {
-  const [texts, attempts] = await Promise.all([liveTexts(), db.attempts.toArray()])
-  return { texts, attempts }
+export async function exportAll(): Promise<{ texts: TextItem[]; attempts: Attempt[]; verses: VerseState[] }> {
+  const [texts, attempts, verses] = await Promise.all([liveTexts(), db.attempts.toArray(), liveVerses()])
+  return { texts, attempts, verses }
 }
 
 /**
@@ -120,7 +143,7 @@ export async function exportAll(): Promise<{ texts: TextItem[]; attempts: Attemp
  * merge — добавить тексты из копии к существующим (id пересоздаются, попытки привязываются к новым).
  */
 export async function importBackup(data: BackupData, mode: 'replace' | 'merge') {
-  await db.transaction('rw', db.texts, db.attempts, async () => {
+  await db.transaction('rw', db.texts, db.attempts, db.verses, async () => {
     if (mode === 'replace') await removeEverythingInTx()
     const now = Date.now()
     const map = new Map<number, { id: number; uid: string }>()
@@ -135,18 +158,68 @@ export async function importBackup(data: BackupData, mode: 'replace' | 'merge') 
         return { ...a, uid: uuid(), textId: m.id, textUid: m.uid }
       }),
     )
+    // Стихи: ключ стиха одинаков на всех устройствах, поэтому при слиянии побеждает более «сильный» прогресс
+    for (const v of data.verses) {
+      const existing = await db.verses.get(v.key)
+      if (!existing) await db.verses.add({ ...v, updatedAt: now })
+      else if (existing.deletedAt || v.strength > existing.strength) {
+        await db.verses.put({ ...v, updatedAt: now, deletedAt: null })
+      }
+    }
   })
 }
 
 /** Удалить все данные. Для синхронизируемого устройства удаление дойдёт и до облака. */
 export async function clearAll() {
-  await db.transaction('rw', db.texts, db.attempts, removeEverythingInTx)
+  await db.transaction('rw', db.texts, db.attempts, db.verses, removeEverythingInTx)
 }
 
 /** Стереть всё локально, не затрагивая облако (при смене аккаунта на устройстве) */
 export async function wipeLocal() {
-  await db.transaction('rw', db.texts, db.attempts, async () => {
+  await db.transaction('rw', db.texts, db.attempts, db.verses, async () => {
     await db.attempts.clear()
     await db.texts.clear()
+    await db.verses.clear()
+  })
+}
+
+// ---------- Стихи ----------
+
+export const liveVerses = () => db.verses.filter((v) => !v.deletedAt).toArray()
+
+/**
+ * Добавляет стихи в список изучаемых. Уже добавленные пропускаются,
+ * ранее удалённые возвращаются в список. Возвращает, сколько стихов добавлено.
+ */
+export async function addVerses(refs: VerseRef[], translation = TRANSLATION): Promise<number> {
+  let added = 0
+  await db.transaction('rw', db.verses, async () => {
+    const now = Date.now()
+    for (const ref of refs) {
+      const key = verseKey(translation, ref)
+      const existing = await db.verses.get(key)
+      if (existing && !existing.deletedAt) continue
+      if (existing) {
+        await db.verses.update(key, { deletedAt: null, addedAt: now })
+      } else {
+        await db.verses.add({
+          key, translation, ...ref, addedAt: now, strength: 0, nextReviewAt: now, updatedAt: now,
+        })
+      }
+      added++
+    }
+  })
+  return added
+}
+
+/** Убрать стихи из списка изучаемых */
+export async function removeVerses(keys: string[]) {
+  await db.transaction('rw', db.verses, async () => {
+    if (getSyncUserId()) {
+      const now = Date.now()
+      for (const key of keys) await db.verses.update(key, { deletedAt: now })
+    } else {
+      await db.verses.bulkDelete(keys)
+    }
   })
 }

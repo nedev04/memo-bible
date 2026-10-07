@@ -29,6 +29,14 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,ico}'],
+        // Книги Библии не кладём в предзагрузку (это несколько мегабайт): каждая сохраняется при первом открытии
+        runtimeCaching: [
+          {
+            urlPattern: ({ url }) => url.pathname.includes('/bible/') && url.pathname.endsWith('.json'),
+            handler: 'CacheFirst',
+            options: { cacheName: 'bible-text', expiration: { maxEntries: 100 } },
+          },
+        ],
       },
     }),
   ],

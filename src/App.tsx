@@ -1,4 +1,5 @@
 import { HashRouter, Link, NavLink, Route, Routes } from 'react-router-dom'
+import BibleAddPage from './pages/BibleAddPage'
 import DataPage from './pages/DataPage'
 import ExercisePage from './pages/ExercisePage'
 import StatsPage from './pages/StatsPage'
@@ -6,6 +7,7 @@ import TextDetailPage from './pages/TextDetailPage'
 import TextEditPage from './pages/TextEditPage'
 import TextsPage from './pages/TextsPage'
 import TodayPage from './pages/TodayPage'
+import VersesPage from './pages/VersesPage'
 import { SyncProvider, useSync } from './sync/SyncProvider'
 
 function Header() {
@@ -17,7 +19,7 @@ function Header() {
       <Link to="/" className="brand">Наизусть</Link>
       <nav>
         <NavLink to="/" end>Сегодня</NavLink>
-        <NavLink to="/texts">Тексты</NavLink>
+        <NavLink to="/verses">Стихи</NavLink>
         <NavLink to="/stats">Статистика</NavLink>
         <NavLink to="/data" className={`gear${user ? ' cloud' : ''}${mark}`} aria-label={title} title={title}>⚙</NavLink>
       </nav>
@@ -34,6 +36,8 @@ export default function App() {
       <main>
         <Routes>
           <Route path="/" element={<TodayPage />} />
+          <Route path="/verses" element={<VersesPage />} />
+          <Route path="/add" element={<BibleAddPage />} />
           <Route path="/texts" element={<TextsPage />} />
           <Route path="/stats" element={<StatsPage />} />
           <Route path="/data" element={<DataPage />} />

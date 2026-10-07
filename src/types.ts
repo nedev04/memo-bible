@@ -53,3 +53,19 @@ export interface Attempt {
   createdAt: number
   dirty?: 0 | 1
 }
+
+/** Состояние запоминания одного стиха. Ключ: rst:mat:5:7 */
+export interface VerseState {
+  key: string
+  translation: string
+  book: string
+  chapter: number
+  verse: number
+  addedAt: number
+  /** Сила запоминания 0–6; 0 — стих только добавлен */
+  strength: number
+  nextReviewAt: number
+  updatedAt: number
+  deletedAt?: number | null
+  dirty?: 0 | 1
+}

@@ -28,9 +28,9 @@ export default function DataPage() {
   const fileRef = useRef<HTMLInputElement>(null)
 
   async function doExport() {
-    const { texts, attempts } = await exportAll()
+    const { texts, attempts, verses } = await exportAll()
     const now = Date.now()
-    download(backupFileName(now), createBackup(texts, attempts, now))
+    download(backupFileName(now), createBackup(texts, attempts, now, verses))
     setLastBackup(now)
     setLast(now)
     setMessage({ kind: 'ok', text: 'Файл скачан. Сохраните его в надёжном месте: в облаке или отправьте себе.' })
@@ -92,7 +92,7 @@ export default function DataPage() {
       {pending && (
         <div className="pending">
           <p>
-            В файле: текстов {pending.texts.length}, упражнений {pending.attempts.length}
+            В файле: стихов {pending.verses.length}, текстов {pending.texts.length}, упражнений {pending.attempts.length}
             {pending.exportedAt > 0 && ` (копия от ${fmt(pending.exportedAt)})`}.
             {pending.skipped > 0 && ` Пропущено повреждённых записей: ${pending.skipped}.`}
           </p>

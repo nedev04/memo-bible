@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { Attempt, TextItem } from '../types'
+import type { Attempt, TextItem, VerseState } from '../types'
 import { backupFileName, createBackup, parseBackup } from './backup'
 
 const T0 = new Date('2026-03-10T12:00:00').getTime()
@@ -45,6 +45,26 @@ describe('backup', () => {
     const data = parseBackup(createBackup([{ ...text, deletedAt: T0 }], [attempt], T0))
     expect(data.texts).toHaveLength(0)
     expect(data.attempts).toHaveLength(0)
+  })
+
+  it('стихи сохраняются и читаются, повреждённые пропускаются', () => {
+    const verse: VerseState = {
+      key: 'rst:mat:5:7', translation: 'rst', book: 'mat', chapter: 5, verse: 7,
+      addedAt: T0, strength: 2, nextReviewAt: T0 + 5, updatedAt: T0, dirty: 1,
+    }
+    const data = parseBackup(createBackup([], [], T0, [verse, { ...verse, key: 'rst:mat:5:8', verse: 8, deletedAt: T0 }]))
+    expect(data.verses).toHaveLength(1)
+    expect(data.verses[0]).toMatchObject({ key: 'rst:mat:5:7', book: 'mat', chapter: 5, verse: 7, strength: 2 })
+
+    const raw = JSON.parse(createBackup([], [], T0, [verse]))
+    raw.verses.push({ key: 'мусор' }, { ...raw.verses[0], key: 'rst:mat:5:9', strength: 99 }, raw.verses[0])
+    const parsed = parseBackup(JSON.stringify(raw))
+    expect(parsed.verses).toHaveLength(1)
+    expect(parsed.skipped).toBe(3)
+  })
+
+  it('старые копии без стихов читаются', () => {
+    expect(parseBackup(createBackup([text], [attempt], T0)).verses).toEqual([])
   })
 
   it('имя файла содержит дату', () => {

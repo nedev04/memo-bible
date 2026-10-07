@@ -1,4 +1,5 @@
-import type { Attempt, Difficulty, ExerciseId, TextItem } from '../types'
+import { parseKey } from '../bible/refs'
+import type { Attempt, Difficulty, ExerciseId, TextItem, VerseState } from '../types'
 import { EXERCISES, MAX_LEVEL } from './config'
 
 export const BACKUP_APP_ID = 'memorize-by-heart'
@@ -8,15 +9,18 @@ export const BACKUP_VERSION = 1
 export type BackupText = Omit<TextItem, 'uid' | 'updatedAt' | 'deletedAt' | 'dirty'> & { id: number }
 export type BackupAttempt = Omit<Attempt, 'id' | 'uid' | 'textUid' | 'dirty'>
 
+export type BackupVerse = Omit<VerseState, 'updatedAt' | 'deletedAt' | 'dirty'>
+
 export interface BackupData {
   texts: BackupText[]
   attempts: BackupAttempt[]
+  verses: BackupVerse[]
   exportedAt: number
   /** Сколько записей пропущено при чтении как повреждённые */
   skipped: number
 }
 
-export function createBackup(texts: TextItem[], attempts: Attempt[], now: number): string {
+export function createBackup(texts: TextItem[], attempts: Attempt[], now: number, verses: VerseState[] = []): string {
   const live = texts.filter((t) => !t.deletedAt && t.id !== undefined)
   const ids = new Set(live.map((t) => t.id))
   return JSON.stringify(
@@ -35,6 +39,12 @@ export function createBackup(texts: TextItem[], attempts: Attempt[], now: number
         lastLevelUpAt: t.lastLevelUpAt,
         nextReviewAt: t.nextReviewAt,
       })),
+      verses: verses
+        .filter((v) => !v.deletedAt)
+        .map((v) => ({
+          key: v.key, translation: v.translation, book: v.book, chapter: v.chapter, verse: v.verse,
+          addedAt: v.addedAt, strength: v.strength, nextReviewAt: v.nextReviewAt,
+        })),
       attempts: attempts
         .filter((a) => ids.has(a.textId))
         .map((a) => ({
@@ -68,6 +78,15 @@ function readText(v: unknown): BackupText | null {
     id, title, content, createdAt, level, levelPoints, levelChangedAt,
     lastLevelUpAt: lastLevelUpAt as number | null, nextReviewAt,
   }
+}
+
+function readVerse(v: unknown): BackupVerse | null {
+  if (!isObj(v) || typeof v.key !== 'string') return null
+  const ref = parseKey(v.key)
+  if (!ref) return null
+  const { addedAt, strength, nextReviewAt } = v
+  if (!isNum(addedAt) || !isNum(nextReviewAt) || !isNum(strength) || strength < 0 || strength > 6) return null
+  return { key: v.key, ...ref, addedAt, strength, nextReviewAt }
 }
 
 function readAttempt(v: unknown): BackupAttempt | null {
@@ -117,7 +136,21 @@ export function parseBackup(raw: string): BackupData {
     else skipped++
   }
 
-  return { texts, attempts, exportedAt: isNum(data.exportedAt) ? data.exportedAt : 0, skipped }
+  const verses: BackupVerse[] = []
+  if (Array.isArray(data.verses)) {
+    const seen = new Set<string>()
+    for (const raw of data.verses) {
+      const parsed = readVerse(raw)
+      if (parsed && !seen.has(parsed.key)) {
+        verses.push(parsed)
+        seen.add(parsed.key)
+      } else {
+        skipped++
+      }
+    }
+  }
+
+  return { texts, attempts, verses, exportedAt: isNum(data.exportedAt) ? data.exportedAt : 0, skipped }
 }
 
 export function backupFileName(now: number): string {
