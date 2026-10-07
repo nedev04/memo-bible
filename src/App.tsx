@@ -2,6 +2,7 @@ import { HashRouter, Link, NavLink, Route, Routes } from 'react-router-dom'
 import BibleAddPage from './pages/BibleAddPage'
 import DataPage from './pages/DataPage'
 import ExercisePage from './pages/ExercisePage'
+import LessonPage from './pages/LessonPage'
 import StatsPage from './pages/StatsPage'
 import TextDetailPage from './pages/TextDetailPage'
 import TextEditPage from './pages/TextEditPage'
@@ -37,6 +38,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<TodayPage />} />
           <Route path="/verses" element={<VersesPage />} />
+          <Route path="/lesson" element={<LessonPage />} />
           <Route path="/add" element={<BibleAddPage />} />
           <Route path="/texts" element={<TextsPage />} />
           <Route path="/stats" element={<StatsPage />} />

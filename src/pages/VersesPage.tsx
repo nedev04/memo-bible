@@ -86,6 +86,10 @@ export default function VersesPage() {
       </div>
 
       {verses.length > 0 && (
+        <Link className="btn primary start" to="/lesson">Начать урок</Link>
+      )}
+
+      {verses.length > 0 && (
         <p className="muted">
           Стихов: {verses.length} · к повторению: {dueCount} · новых: {newCount}
         </p>

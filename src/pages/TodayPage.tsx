@@ -3,7 +3,8 @@ import { Link } from 'react-router-dom'
 import { useSync } from '../sync/SyncProvider'
 import LevelProgress from '../components/LevelProgress'
 import { getLastBackup } from '../db/backupMeta'
-import { db, liveTexts } from '../db/db'
+import { db, liveTexts, liveVerses } from '../db/db'
+import { isDue } from '../logic/mastery'
 import { DIFFICULTY_LABEL, EXERCISES } from '../logic/config'
 import { dueLabel, exerciseLink, overdueLabel, recommend, sameDay } from '../logic/progress'
 import type { Attempt } from '../types'
@@ -12,7 +13,8 @@ export default function TodayPage() {
   const { user } = useSync()
   const texts = useLiveQuery(() => liveTexts(), [])
   const attempts = useLiveQuery(() => db.attempts.toArray(), [])
-  if (!texts || !attempts) return null
+  const verses = useLiveQuery(() => liveVerses(), [])
+  if (!texts || !attempts || !verses) return null
 
   const now = Date.now()
   const byText = new Map<number, Attempt[]>()
@@ -35,6 +37,16 @@ export default function TodayPage() {
           ? 'Сегодня упражнений ещё не было.'
           : `Сегодня: ${todays.length} упр. · ${todayPoints} очк.`}
       </p>
+
+      {verses.length > 0 && (
+        <section className="lesson-card">
+          <strong>Урок по стихам</strong>
+          <small>
+            Новых: {verses.filter((v) => v.strength === 0).length} · к повторению: {verses.filter((v) => v.strength > 0 && isDue(v, now)).length}
+          </small>
+          <Link className="btn primary start" to="/lesson">Начать урок</Link>
+        </section>
+      )}
 
       {needBackup && (
         <p className="notice">

@@ -77,3 +77,68 @@ create policy "texts: own rows" on public.texts
 create policy "attempts: own rows" on public.attempts
   for all to authenticated
   using (user_id = auth.uid()) with check (user_id = auth.uid());
+
+
+-- =====================================================================
+-- Версия 2: стихи Библии и журнал результатов.
+-- Если вы уже запускали файл раньше, выполните его целиком ещё раз: он дополняет схему.
+-- =====================================================================
+
+create table if not exists public.verses (
+  user_id            uuid   not null default auth.uid() references auth.users (id) on delete cascade,
+  key                text   not null,
+  translation        text   not null,
+  book               text   not null,
+  chapter            int    not null,
+  verse              int    not null,
+  added_at           bigint not null,
+  strength           int    not null,
+  next_review_at     bigint not null,
+  last_up_at         bigint,
+  last_practiced_at  bigint,
+  last_score         int,
+  lapses             int    not null default 0,
+  updated_at         bigint not null,
+  deleted_at         bigint,
+  server_updated_at  timestamptz not null default clock_timestamp(),
+  primary key (user_id, key)
+);
+
+create table if not exists public.reviews (
+  user_id            uuid   not null default auth.uid() references auth.users (id) on delete cascade,
+  uid                uuid   not null,
+  verse_key          text   not null,
+  exercise           text   not null,
+  tier               int    not null,
+  score              int    not null,
+  xp                 int    not null,
+  created_at         bigint not null,
+  server_updated_at  timestamptz not null default clock_timestamp(),
+  primary key (user_id, uid)
+);
+
+create index if not exists verses_sync_idx  on public.verses  (user_id, server_updated_at);
+create index if not exists reviews_sync_idx on public.reviews (user_id, server_updated_at);
+
+-- Для стихов тот же принцип, что и для текстов: более старая запись не затирает более новую.
+drop trigger if exists verses_before_write on public.verses;
+create trigger verses_before_write before insert or update on public.verses
+  for each row execute function public.texts_before_write();
+
+drop trigger if exists reviews_touch on public.reviews;
+create trigger reviews_touch before insert or update on public.reviews
+  for each row execute function public.touch_server_time();
+
+alter table public.verses  enable row level security;
+alter table public.reviews enable row level security;
+
+drop policy if exists "verses: own rows"  on public.verses;
+drop policy if exists "reviews: own rows" on public.reviews;
+
+create policy "verses: own rows" on public.verses
+  for all to authenticated
+  using (user_id = auth.uid()) with check (user_id = auth.uid());
+
+create policy "reviews: own rows" on public.reviews
+  for all to authenticated
+  using (user_id = auth.uid()) with check (user_id = auth.uid());

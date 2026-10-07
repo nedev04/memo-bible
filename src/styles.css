@@ -300,3 +300,35 @@ input[type="file"] { max-width: 100%; color: var(--ink); }
 .btn.small { padding: 0.35rem 0.7rem; font-size: 0.9rem; flex: none; }
 
 .verse-row .vstatus { margin-top: 0.1rem; }
+
+/* Урок */
+.lesson { padding-bottom: 7rem; }
+.lesson-top { display: flex; align-items: center; gap: 0.8rem; margin: 0.2rem 0 1rem; }
+.lesson-top .pbar { flex: 1; margin: 0; }
+.lesson-top .pbar-track { height: 12px; border-radius: 6px; }
+.lesson-close { background: none; border: none; font-size: 1.3rem; cursor: pointer; color: var(--muted); padding: 0.3rem 0.5rem; }
+.lesson-close:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.lesson-title { font-size: 1.15rem; margin: 0 0 0.6rem; }
+.lesson-title small { display: inline; margin-left: 0.4rem; }
+
+.feedback {
+  position: fixed; left: 0; right: 0; bottom: 0; display: grid; gap: 0.3rem;
+  padding: 1rem 1rem calc(env(safe-area-inset-bottom, 0px) + 1rem);
+  background: color-mix(in srgb, var(--good) 18%, var(--paper)); border-top: 3px solid var(--good);
+}
+.feedback.mid { background: color-mix(in srgb, var(--mark) 25%, var(--paper)); border-top-color: var(--mark); }
+.feedback.bad { background: color-mix(in srgb, var(--bad) 16%, var(--paper)); border-top-color: var(--bad); }
+.feedback > * { max-width: 640px; margin: 0 auto; width: 100%; }
+.feedback .btn { margin-top: 0.4rem; }
+
+.lesson-done .xp { font-size: 1.6rem; font-weight: 700; color: var(--accent); margin: 0; }
+.changes { list-style: none; padding: 0; margin: 1rem auto 0; max-width: 22rem; text-align: left; }
+.changes li { padding: 0.3rem 0; }
+.changes .up { color: var(--good); }
+.changes .down { color: var(--bad); }
+
+.sliders { display: grid; gap: 0.8rem; margin-top: 1.2rem; padding-top: 1rem; border-top: 1px solid var(--line); }
+.sliders label { display: grid; gap: 0.3rem; font-size: 0.95rem; }
+.sliders input[type="range"] { width: 100%; accent-color: var(--accent); }
+.lesson-card { margin: 0.5rem 0 1rem; padding: 0.9rem 1rem; border-left: 4px solid var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.lesson-card small { margin: 0.2rem 0 0.6rem; }

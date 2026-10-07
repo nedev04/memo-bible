@@ -105,6 +105,12 @@ export function buildGaps(words: FlatWord[], difficulty: Difficulty, rng: Rng = 
   })
 }
 
+function sharedSuffix(a: string, b: string): number {
+  let n = 0
+  while (n < Math.min(a.length, b.length, 3) && a[a.length - 1 - n] === b[b.length - 1 - n]) n++
+  return n
+}
+
 /**
  * Подбирает слова из самого текста, похожие на answer, но не совпадающие с ним.
  * Чем выше сложность, тем похожее слова (по длине и первой букве). Первое в списке — самое подходящее.
@@ -127,6 +133,8 @@ export function pickDistractors(
       let key = 0
       if (difficulty >= 2) key += Math.abs(v.length - answer.length)
       if (difficulty === 3 && k.charAt(0) === ansNorm.charAt(0)) key -= 1.5
+      // Слова с тем же окончанием обычно той же формы (падеж, число), поэтому звучат в тексте естественнее
+      if (difficulty >= 2) key -= Math.min(2, sharedSuffix(k, ansNorm)) * 0.8
       return { v, key: key + rng() * 1.5 }
     })
     .sort((a, b) => a.key - b.key)
