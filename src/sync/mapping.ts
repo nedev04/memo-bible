@@ -1,5 +1,6 @@
 import { EXERCISES } from '../logic/config'
-import type { Attempt, Difficulty, ExerciseId, TextItem } from '../types'
+import { parseKey } from '../bible/refs'
+import type { Attempt, Difficulty, ExerciseId, TextItem, VerseReview, VerseState } from '../types'
 
 /** Строка таблицы texts в облаке */
 export interface TextRow {
@@ -119,4 +120,108 @@ export function maxServerTime(rows: { server_updated_at?: string }[], current: n
 export const OVERLAP_MS = 5 * 60 * 1000
 export function sinceIso(cursor: number | null): string {
   return new Date(cursor === null ? 0 : Math.max(0, cursor - OVERLAP_MS)).toISOString()
+}
+
+/** Строка таблицы verses в облаке */
+export interface VerseRow {
+  user_id?: string
+  key: string
+  translation: string
+  book: string
+  chapter: number
+  verse: number
+  added_at: number
+  strength: number
+  next_review_at: number
+  last_up_at: number | null
+  last_practiced_at: number | null
+  last_score: number | null
+  lapses: number
+  updated_at: number
+  deleted_at: number | null
+  server_updated_at?: string
+}
+
+/** Строка таблицы reviews в облаке */
+export interface ReviewRow {
+  user_id?: string
+  uid: string
+  verse_key: string
+  exercise: string
+  tier: number
+  score: number
+  xp: number
+  created_at: number
+  server_updated_at?: string
+}
+
+export function verseToRow(v: VerseState, userId: string): VerseRow {
+  return {
+    user_id: userId,
+    key: v.key,
+    translation: v.translation,
+    book: v.book,
+    chapter: v.chapter,
+    verse: v.verse,
+    added_at: v.addedAt,
+    strength: v.strength,
+    next_review_at: v.nextReviewAt,
+    last_up_at: v.lastUpAt,
+    last_practiced_at: v.lastPracticedAt,
+    last_score: v.lastScore,
+    lapses: v.lapses,
+    updated_at: v.updatedAt,
+    deleted_at: v.deletedAt ?? null,
+  }
+}
+
+const orNull = (x: number | null): number | null => (x === null || x === undefined ? null : Number(x))
+
+export function rowToVerse(r: VerseRow): VerseState {
+  return {
+    key: r.key,
+    translation: r.translation,
+    book: r.book,
+    chapter: r.chapter,
+    verse: r.verse,
+    addedAt: Number(r.added_at),
+    strength: r.strength,
+    nextReviewAt: Number(r.next_review_at),
+    lastUpAt: orNull(r.last_up_at),
+    lastPracticedAt: orNull(r.last_practiced_at),
+    lastScore: orNull(r.last_score),
+    lapses: r.lapses,
+    updatedAt: Number(r.updated_at),
+    deletedAt: orNull(r.deleted_at),
+    dirty: 0,
+  }
+}
+
+/** Стих с ключом, который эта версия не понимает, пропускается */
+export const isKnownVerseRow = (r: VerseRow): boolean => parseKey(r.key) !== null
+
+export function reviewToRow(v: VerseReview, userId: string): ReviewRow {
+  return {
+    user_id: userId,
+    uid: v.uid,
+    verse_key: v.verseKey,
+    exercise: v.exercise,
+    tier: v.tier,
+    score: v.score,
+    xp: v.xp,
+    created_at: v.createdAt,
+  }
+}
+
+export function rowToReview(r: ReviewRow): VerseReview {
+  return {
+    uid: r.uid,
+    verseKey: r.verse_key,
+    exercise: r.exercise,
+    tier: r.tier as 1 | 2 | 3,
+    score: r.score,
+    xp: r.xp,
+    createdAt: Number(r.created_at),
+    dirty: 0,
+  }
 }

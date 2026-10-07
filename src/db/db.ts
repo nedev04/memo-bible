@@ -4,12 +4,14 @@ import type { BackupData } from '../logic/backup'
 import { getSyncUserId } from '../sync/syncMeta'
 import type { VerseRef } from '../bible/types'
 import { TRANSLATION, verseKey } from '../bible/refs'
-import type { Attempt, TextItem, VerseState } from '../types'
+import { applyVerseResult, xpFor, type Tier } from '../logic/mastery'
+import type { Attempt, TextItem, VerseReview, VerseState } from '../types'
 
 class AppDB extends Dexie {
   texts!: Table<TextItem, number>
   attempts!: Table<Attempt, number>
   verses!: Table<VerseState, string>
+  reviews!: Table<VerseReview, number>
 
   constructor() {
     super('memorize-by-heart')
@@ -48,6 +50,20 @@ class AppDB extends Dexie {
     this.version(3).stores({
       verses: 'key, book, nextReviewAt, dirty',
     })
+    // v4: журнал результатов по стихам и поля прогресса у стихов
+    this.version(4)
+      .stores({
+        verses: 'key, book, nextReviewAt, dirty',
+        reviews: '++id, uid, verseKey, createdAt, dirty',
+      })
+      .upgrade((tx) =>
+        tx.table('verses').toCollection().modify((v: Record<string, unknown>) => {
+          v.lastUpAt ??= null
+          v.lastPracticedAt ??= null
+          v.lastScore ??= null
+          v.lapses ??= 0
+        }),
+      )
   }
 }
 
@@ -96,6 +112,13 @@ db.verses.hook('updating', (_mods, _key, _obj, tx) => {
   return { updatedAt: Date.now(), dirty: 1 }
 })
 
+db.reviews.hook('creating', (_key, obj, tx) => {
+  if (isSyncTx(tx)) return
+  obj.uid ||= uuid()
+  obj.dirty = 1
+  notifyChanged()
+})
+
 // ---------- Запросы ----------
 
 /** Тексты без удалённых (удалённые некоторое время хранятся как «надгробия» до отправки в облако) */
@@ -130,6 +153,7 @@ async function removeEverythingInTx() {
   } else {
     await db.texts.clear()
     await db.verses.clear()
+    await db.reviews.clear()
   }
 }
 
@@ -171,15 +195,16 @@ export async function importBackup(data: BackupData, mode: 'replace' | 'merge') 
 
 /** Удалить все данные. Для синхронизируемого устройства удаление дойдёт и до облака. */
 export async function clearAll() {
-  await db.transaction('rw', db.texts, db.attempts, db.verses, removeEverythingInTx)
+  await db.transaction('rw', db.texts, db.attempts, db.verses, db.reviews, removeEverythingInTx)
 }
 
 /** Стереть всё локально, не затрагивая облако (при смене аккаунта на устройстве) */
 export async function wipeLocal() {
-  await db.transaction('rw', db.texts, db.attempts, db.verses, async () => {
+  await db.transaction('rw', db.texts, db.attempts, db.verses, db.reviews, async () => {
     await db.attempts.clear()
     await db.texts.clear()
     await db.verses.clear()
+    await db.reviews.clear()
   })
 }
 
@@ -204,6 +229,7 @@ export async function addVerses(refs: VerseRef[], translation = TRANSLATION): Pr
       } else {
         await db.verses.add({
           key, translation, ...ref, addedAt: now, strength: 0, nextReviewAt: now, updatedAt: now,
+          lastUpAt: null, lastPracticedAt: null, lastScore: null, lapses: 0,
         })
       }
       added++
@@ -221,5 +247,27 @@ export async function removeVerses(keys: string[]) {
     } else {
       await db.verses.bulkDelete(keys)
     }
+  })
+}
+
+/**
+ * Записывает результат упражнения по стиху: обновляет силу и дату повторения, добавляет запись в журнал.
+ * Возвращает, как изменилась сила, и сколько получено опыта.
+ */
+export async function recordVerseResult(
+  key: string,
+  input: { exercise: string; tier: Tier; score: number },
+  now = Date.now(),
+) {
+  return db.transaction('rw', db.verses, db.reviews, async () => {
+    const verse = await db.verses.get(key)
+    if (!verse || verse.deletedAt) throw new Error('Стих не найден')
+    const { verse: updated, change } = applyVerseResult(verse, input, now)
+    await db.verses.put(updated)
+    const xp = xpFor(input.tier, input.score)
+    await db.reviews.add({
+      uid: uuid(), verseKey: key, exercise: input.exercise, tier: input.tier, score: input.score, xp, createdAt: now,
+    })
+    return { change, xp, strength: updated.strength }
   })
 }

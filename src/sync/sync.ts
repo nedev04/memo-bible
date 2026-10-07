@@ -1,8 +1,9 @@
 import { db, markSyncTx } from '../db/db'
 import { supabase } from './client'
 import {
-  attemptToRow, isKnownAttemptRow, maxServerTime, remoteWins, rowToAttempt, rowToText, sinceIso, textToRow,
-  type AttemptRow, type TextRow,
+  attemptToRow, isKnownAttemptRow, isKnownVerseRow, maxServerTime, remoteWins, reviewToRow, rowToAttempt, rowToReview,
+  rowToText, rowToVerse, sinceIso, textToRow, verseToRow,
+  type AttemptRow, type ReviewRow, type TextRow, type VerseRow,
 } from './mapping'
 import { getPullCursor, setPullCursor } from './syncMeta'
 
@@ -14,6 +15,10 @@ export interface SyncSummary {
   pulledAttempts: number
   pushedTexts: number
   pushedAttempts: number
+  pulledVerses: number
+  pushedVerses: number
+  pulledReviews: number
+  pushedReviews: number
 }
 
 function fail(error: { message: string } | null) {
@@ -21,7 +26,7 @@ function fail(error: { message: string } | null) {
 }
 
 /** Забирает все записи таблицы, изменённые после `since`, страницами */
-async function fetchChanged<T>(table: 'texts' | 'attempts', since: string): Promise<T[]> {
+async function fetchChanged<T>(table: 'texts' | 'attempts' | 'verses' | 'reviews', since: string): Promise<T[]> {
   const out: T[] = []
   for (let from = 0; ; from += PAGE) {
     const { data, error } = await supabase!
@@ -51,15 +56,20 @@ function chunks<T>(list: T[], size: number): T[][] {
  */
 export async function syncOnce(userId: string): Promise<SyncSummary> {
   if (!supabase) throw new Error('Облако не настроено')
-  const summary: SyncSummary = { pulledTexts: 0, pulledAttempts: 0, pushedTexts: 0, pushedAttempts: 0 }
+  const summary: SyncSummary = {
+    pulledTexts: 0, pulledAttempts: 0, pushedTexts: 0, pushedAttempts: 0,
+    pulledVerses: 0, pushedVerses: 0, pulledReviews: 0, pushedReviews: 0,
+  }
 
   // ---------- 1. Забираем ----------
   const cursor = getPullCursor(userId)
   const since = sinceIso(cursor)
   const textRows = await fetchChanged<TextRow>('texts', since)
   const attemptRows = await fetchChanged<AttemptRow>('attempts', since)
+  const verseRows = await fetchChanged<VerseRow>('verses', since)
+  const reviewRows = await fetchChanged<ReviewRow>('reviews', since)
 
-  await db.transaction('rw', db.texts, db.attempts, async (tx) => {
+  await db.transaction('rw', db.texts, db.attempts, db.verses, db.reviews, async (tx) => {
     markSyncTx(tx)
 
     for (const r of textRows) {
@@ -88,6 +98,29 @@ export async function syncOnce(userId: string): Promise<SyncSummary> {
       await db.attempts.add(rowToAttempt(r, text.id!))
       summary.pulledAttempts++
     }
+
+    // Стихи: как тексты, побеждает более новая запись
+    for (const r of verseRows) {
+      if (!isKnownVerseRow(r)) continue
+      const local = await db.verses.get(r.key)
+      if (!remoteWins(local, Number(r.updated_at))) continue
+      if (r.deleted_at !== null) {
+        if (local) {
+          await db.verses.delete(r.key)
+          summary.pulledVerses++
+        }
+        continue
+      }
+      await db.verses.put(rowToVerse(r))
+      summary.pulledVerses++
+    }
+
+    // Журнал результатов: только добавляется
+    for (const r of reviewRows) {
+      if ((await db.reviews.where('uid').equals(r.uid).count()) > 0) continue
+      await db.reviews.add(rowToReview(r))
+      summary.pulledReviews++
+    }
   })
 
   // ---------- 2. Отправляем ----------
@@ -114,8 +147,24 @@ export async function syncOnce(userId: string): Promise<SyncSummary> {
     fail(error)
   }
 
+  const dirtyVerses = await db.verses.where('dirty').equals(1).toArray()
+  for (const part of chunks(dirtyVerses, CHUNK)) {
+    const { error } = await supabase
+      .from('verses')
+      .upsert(part.map((v) => verseToRow(v, userId)), { onConflict: 'user_id,key' })
+    fail(error)
+  }
+
+  const dirtyReviews = await db.reviews.where('dirty').equals(1).toArray()
+  for (const part of chunks(dirtyReviews, CHUNK)) {
+    const { error } = await supabase
+      .from('reviews')
+      .upsert(part.map((r) => reviewToRow(r, userId)), { onConflict: 'user_id,uid', ignoreDuplicates: true })
+    fail(error)
+  }
+
   // Снимаем пометки. Если запись успели изменить во время отправки, она остаётся «грязной» до следующего раза.
-  await db.transaction('rw', db.texts, db.attempts, async (tx) => {
+  await db.transaction('rw', db.texts, db.attempts, db.verses, db.reviews, async (tx) => {
     markSyncTx(tx)
     for (const t of dirtyTexts) {
       const cur = await db.texts.get(t.id!)
@@ -124,10 +173,19 @@ export async function syncOnce(userId: string): Promise<SyncSummary> {
       else await db.texts.update(cur.id!, { dirty: 0 })
     }
     for (const a of dirtyAttempts) await db.attempts.update(a.id!, { dirty: 0 })
+    for (const v of dirtyVerses) {
+      const cur = await db.verses.get(v.key)
+      if (!cur || cur.updatedAt !== v.updatedAt) continue
+      if (cur.deletedAt) await db.verses.delete(cur.key)
+      else await db.verses.update(cur.key, { dirty: 0 })
+    }
+    for (const r of dirtyReviews) await db.reviews.update(r.id!, { dirty: 0 })
   })
   summary.pushedTexts = dirtyTexts.length
   summary.pushedAttempts = dirtyAttempts.length
+  summary.pushedVerses = dirtyVerses.length
+  summary.pushedReviews = dirtyReviews.length
 
-  setPullCursor(userId, maxServerTime([...textRows, ...attemptRows], cursor))
+  setPullCursor(userId, maxServerTime([...textRows, ...attemptRows, ...verseRows, ...reviewRows], cursor))
   return summary
 }

@@ -65,7 +65,29 @@ export interface VerseState {
   /** Сила запоминания 0–6; 0 — стих только добавлен */
   strength: number
   nextReviewAt: number
+  /** Когда сила росла в последний раз (не больше одного шага в день) */
+  lastUpAt: number | null
+  lastPracticedAt: number | null
+  /** Результат последнего упражнения по этому стиху, 0–100 */
+  lastScore: number | null
+  /** Сколько раз сила падала */
+  lapses: number
   updatedAt: number
   deletedAt?: number | null
+  dirty?: 0 | 1
+}
+
+/** Запись о результате упражнения по стиху (журнал для опыта и статистики; только добавляется) */
+export interface VerseReview {
+  id?: number
+  uid: string
+  verseKey: string
+  /** Код упражнения */
+  exercise: string
+  /** Сложность упражнения 1–3 */
+  tier: 1 | 2 | 3
+  score: number
+  xp: number
+  createdAt: number
   dirty?: 0 | 1
 }

@@ -298,3 +298,5 @@ input[type="file"] { max-width: 100%; color: var(--ink); }
 .verse-row { display: flex; gap: 0.8rem; align-items: flex-start; padding: 0.8rem 0; }
 .verse-row .vpreview { font-family: var(--font-text); line-height: 1.45; margin-top: 0.2rem; }
 .btn.small { padding: 0.35rem 0.7rem; font-size: 0.9rem; flex: none; }
+
+.verse-row .vstatus { margin-top: 0.1rem; }
