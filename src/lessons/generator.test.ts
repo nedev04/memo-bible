@@ -3,7 +3,9 @@ import type { VerseState } from '../types'
 import { DAY } from '../logic/config'
 import { applySliderMask, makeRanks } from './mask'
 import { buildVerseGaps } from './gaps'
-import { gapSettings, partialSettings, pickVerses, planLesson } from './generator'
+import { followingVerses, gapSettings, partialSettings, pickVerses, planLesson } from './generator'
+import { buildWhereQuestions, nearBooks, nearNumbers } from './where'
+import { splitIntoPieces } from '../logic/exercises'
 import { flattenWords } from '../logic/exercises'
 
 const T0 = new Date('2026-03-10T10:00:00').getTime()
@@ -50,11 +52,36 @@ describe('подбор стихов', () => {
 })
 
 describe('план урока', () => {
-  it('новый стих: открытие → скрытый текст → пропуски; повторение: скрытый текст → пропуски', () => {
-    const steps = planLesson([verse(1), verse(2, { strength: 3, nextReviewAt: T0 - DAY })], T0)
-    expect(steps.map((s) => s.kind)).toEqual(['reveal', 'partial', 'fillGaps', 'partial', 'fillGaps'])
-    expect(steps.every((s) => s.verseKeys.length === 1)).toBe(true)
+  const kinds = (steps: { kind: string }[]) => steps.map((s) => s.kind)
+
+  it('новый стих: открытие → скрытый текст → пропуски', () => {
+    const steps = planLesson([verse(1)], T0, seeded(1))
+    expect(kinds(steps)).toEqual(['reveal', 'partial', 'fillGaps'])
     expect(new Set(steps.map((s) => s.id)).size).toBe(steps.length)
+  })
+
+  it('повторение: одно дополнительное упражнение и «главное» последним, сложность зависит от силы', () => {
+    const gateFor = (strength: number) =>
+      planLesson([verse(1, { strength, nextReviewAt: T0 - DAY })], T0, seeded(3)).at(-1)!
+    expect(gateFor(1).kind).toBe('fillGaps')
+    expect(gateFor(2).kind).toBe('assemble')
+    expect(gateFor(2).settings.pieces).toBe(6)
+    expect(gateFor(3).kind).toBe('assemble')
+    expect(gateFor(3).settings.pieces).toBe(9)
+    expect(gateFor(5).kind).toBe('fillGaps')
+    expect(planLesson([verse(1, { strength: 3, nextReviewAt: T0 - DAY })], T0, seeded(3))).toHaveLength(2)
+  })
+
+  it('если рядом учатся соседние стихи, на сильных стихах предлагается «Расставьте части»', () => {
+    const verses = [
+      verse(7, { strength: 3, nextReviewAt: T0 - DAY }),
+      verse(8, { strength: 1, nextReviewAt: T0 + 5 * DAY }),
+      verse(9, { strength: 2, nextReviewAt: T0 + 5 * DAY }),
+      verse(10, { strength: 0 }),
+    ]
+    expect(followingVerses(verses[0], verses).map((v) => v.verse)).toEqual([8, 9])
+    const gate = planLesson(verses.slice(0, 3), T0, seeded(2)).find((s) => s.kind === 'orderParts')
+    expect(gate?.verseKeys).toEqual(['rst:mat:5:7', 'rst:mat:5:8', 'rst:mat:5:9'])
   })
 
   it('сложность растёт с силой стиха', () => {
@@ -67,6 +94,59 @@ describe('план урока', () => {
 
   it('без стихов урока нет', () => {
     expect(planLesson([], T0)).toEqual([])
+  })
+})
+
+describe('вопросы «где написано»', () => {
+  const v = { book: 'mat', chapter: 5, verse: 7, bookChapters: 28, chapterVerses: 48 }
+
+  it('число вопросов зависит от уровня; правильный ответ среди вариантов', () => {
+    for (const levels of [1, 2, 3] as const) {
+      const qs = buildWhereQuestions(v, levels, seeded(levels))
+      expect(qs).toHaveLength(levels)
+      qs.forEach((q) => expect(q.options.map((o) => o.value)).toContain(q.answer))
+    }
+  })
+
+  it('варианты книг: 4 разные, в порядке Библии, две из того же завета', () => {
+    const books = nearBooks('mat', seeded(4))
+    expect(books).toHaveLength(4)
+    expect(new Set(books.map((b) => b.value)).size).toBe(4)
+  })
+
+  it('числа рядом с правильным, по возрастанию, без повторов', () => {
+    const nums = nearNumbers(5, 28, 5, seeded(1))
+    expect(nums).toHaveLength(5)
+    expect(nums).toContain(5)
+    expect([...nums].sort((a, b) => a - b)).toEqual(nums)
+    expect(Math.max(...nums) - Math.min(...nums)).toBeLessThanOrEqual(8)
+  })
+
+  it('вопрос пропускается, если выбирать не из чего', () => {
+    const one = { book: 'oba', chapter: 1, verse: 3, bookChapters: 1, chapterVerses: 1 }
+    expect(buildWhereQuestions(one, 3, seeded(1)).map((q) => q.field)).toEqual(['book'])
+  })
+})
+
+describe('разбиение на части', () => {
+  const text = 'Блаженны милостивые, ибо они помилованы будут; блаженны чистые сердцем, ибо они Бога узрят'
+
+  it('части склеиваются обратно в исходный текст', () => {
+    for (const n of [2, 4, 6, 9]) {
+      const parts = splitIntoPieces(text, n)
+      expect(parts.join(' ')).toBe(text)
+      expect(parts.length).toBeLessThanOrEqual(n)
+      expect(parts.length).toBeGreaterThan(1)
+    }
+  })
+
+  it('слов меньше, чем частей, — каждое слово отдельно', () => {
+    expect(splitIntoPieces('Господь пастырь мой', 10)).toEqual(['Господь', 'пастырь', 'мой'])
+  })
+
+  it('разбивает по знакам препинания, если они есть рядом с серединой', () => {
+    const parts = splitIntoPieces(text, 2)
+    expect(parts[0].endsWith(';')).toBe(true)
   })
 })
 

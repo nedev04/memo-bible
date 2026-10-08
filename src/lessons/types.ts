@@ -1,21 +1,39 @@
 import type { Tier } from '../logic/mastery'
 
-export type ExerciseKind = 'reveal' | 'partial' | 'fillGaps'
+export type ExerciseKind = 'reveal' | 'partial' | 'fillGaps' | 'assemble' | 'whereWritten' | 'orderParts'
 
 export const KIND_TITLE: Record<ExerciseKind, string> = {
   reveal: 'Откройте стих по частям',
   partial: 'Прочитайте стих',
   fillGaps: 'Выберите пропущенное слово',
+  assemble: 'Соберите стих в правильном порядке',
+  whereWritten: 'Где это написано?',
+  orderParts: 'Расставьте части по порядку',
+}
+
+/** В заголовке упражнения нельзя показывать ссылку, если она и есть ответ */
+export const KIND_SHOWS_REF: Record<ExerciseKind, boolean> = {
+  reveal: true, partial: true, fillGaps: true, assemble: true, whereWritten: false, orderParts: true,
 }
 
 /**
  * Сложность упражнения для правил запоминания. null — учебное упражнение: оно знакомит со стихом,
  * но не проверяет его, поэтому на силу стиха не влияет.
  */
-export const KIND_TIER: Record<ExerciseKind, Tier | null> = {
-  reveal: null,
-  partial: null,
-  fillGaps: 1,
+export function stepTier(step: LessonStep): Tier | null {
+  switch (step.kind) {
+    case 'reveal':
+    case 'partial':
+      return null
+    case 'fillGaps':
+      return 1
+    case 'whereWritten':
+      return (step.settings.levels ?? 1) >= 3 ? 2 : 1
+    case 'assemble':
+      return (step.settings.pieces ?? 6) <= 4 ? 1 : 2
+    case 'orderParts':
+      return 2
+  }
 }
 
 export interface StepSettings {
@@ -29,6 +47,10 @@ export interface StepSettings {
   blanks?: number
   /** Сколько вариантов ответа */
   options?: number
+  /** На сколько частей разбивается стих при сборке */
+  pieces?: number
+  /** Сколько вопросов «где написано»: 1 — книга, 2 — и глава, 3 — и стих */
+  levels?: 1 | 2 | 3
 }
 
 export interface LessonStep {
@@ -51,6 +73,9 @@ export interface VerseText {
   text: string
   /** Текст всей главы: из него берутся неверные варианты ответа */
   chapterText: string
+  /** Сколько глав в книге и сколько стихов в этой главе (для вопросов «где написано») */
+  bookChapters: number
+  chapterVerses: number
 }
 
 export interface StepResult {
@@ -69,7 +94,10 @@ export interface StepOutcome {
 
 /** Что получает компонент упражнения */
 export interface StepProps {
+  /** Первый (или единственный) стих шага */
   verse: VerseText
+  /** Все стихи шага: больше одного бывает в «Расставьте части» */
+  verses: VerseText[]
   settings: StepSettings
   onAnswer: (result: StepResult) => void
 }

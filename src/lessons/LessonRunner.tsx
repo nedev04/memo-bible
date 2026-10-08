@@ -1,15 +1,30 @@
 import { useState, type ComponentType } from 'react'
 import ProgressBar from '../components/ProgressBar'
 import { PASS_SCORE, PARTIAL_SCORE } from '../logic/config'
+import AssembleWords from './exercises/AssembleWords'
 import FillGapsVerse from './exercises/FillGapsVerse'
+import OrderParts from './exercises/OrderParts'
 import PartialVerse from './exercises/PartialVerse'
 import RevealVerse from './exercises/RevealVerse'
-import { KIND_TITLE, type ExerciseKind, type LessonStep, type StepOutcome, type StepProps, type StepResult, type VerseText } from './types'
+import WhereWritten from './exercises/WhereWritten'
+import { KIND_SHOWS_REF, KIND_TITLE, type ExerciseKind, type LessonStep, type StepOutcome, type StepProps, type StepResult, type VerseText } from './types'
 
 const COMPONENTS: Record<ExerciseKind, ComponentType<StepProps>> = {
   reveal: RevealVerse,
   partial: PartialVerse,
   fillGaps: FillGapsVerse,
+  assemble: AssembleWords,
+  whereWritten: WhereWritten,
+  orderParts: OrderParts,
+}
+
+/** «Матфея 5:7–9» для нескольких подряд идущих стихов */
+function stepRef(verses: VerseText[]): string {
+  const first = verses[0]
+  const last = verses[verses.length - 1]
+  if (verses.length === 1 || first.book !== last.book || first.chapter !== last.chapter) return first.ref
+  const name = first.ref.slice(0, first.ref.lastIndexOf(' '))
+  return `${name} ${first.chapter}:${first.verse}–${last.verse}`
 }
 
 interface Props {
@@ -95,7 +110,8 @@ export default function LessonRunner({ steps, texts, record, onClose, onAnother 
     )
   }
 
-  const verse = texts.get(step.verseKeys[0])!
+  const verses = step.verseKeys.map((k) => texts.get(k)!)
+  const verse = verses[0]
   const Exercise = COMPONENTS[step.kind]
   const total = queue.length
   const finished = index + (result ? 1 : 0)
@@ -108,10 +124,13 @@ export default function LessonRunner({ steps, texts, record, onClose, onAnother 
       </div>
 
       <h1 className="lesson-title">
-        {KIND_TITLE[step.kind]} <small>{verse.ref}{step.retry ? ' · повтор' : ''}</small>
+        {KIND_TITLE[step.kind]}
+        {(KIND_SHOWS_REF[step.kind] || step.retry) && (
+          <small>{[KIND_SHOWS_REF[step.kind] ? stepRef(verses) : '', step.retry ? 'повтор' : ''].filter(Boolean).join(' · ')}</small>
+        )}
       </h1>
 
-      <Exercise key={step.id} verse={verse} settings={step.settings} onAnswer={onAnswer} />
+      <Exercise key={step.id} verse={verse} verses={verses} settings={step.settings} onAnswer={onAnswer} />
 
       {result && (
         <div className={`feedback ${result.score >= PASS_SCORE ? 'ok' : result.score >= PARTIAL_SCORE ? 'mid' : 'bad'}`} role="status">

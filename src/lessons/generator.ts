@@ -1,4 +1,5 @@
 import { compareVerses } from '../bible/refs'
+import { shuffle, type Rng } from '../logic/exercises'
 import { isDue, needsAttention } from '../logic/mastery'
 import type { VerseState } from '../types'
 import type { LessonStep, StepSettings } from './types'
@@ -41,22 +42,65 @@ export function pickVerses(verses: VerseState[], now: number): VerseState[] {
   return list
 }
 
-/** Простой урок: новые стихи (знакомство → пропуски), затем повторение (скрытый текст → пропуски) */
-export function planLesson(verses: VerseState[], now: number): LessonStep[] {
+/** Подряд идущие стихи после данного (не больше трёх), которые тоже учатся и уже не новые */
+export function followingVerses(v: VerseState, all: VerseState[]): VerseState[] {
+  const same = new Map(all.filter((x) => x.book === v.book && x.chapter === v.chapter && x.strength >= 1).map((x) => [x.verse, x]))
+  const out: VerseState[] = []
+  for (let n = v.verse + 1; out.length < 3 && same.has(n); n++) out.push(same.get(n)!)
+  return out
+}
+
+type Candidate = Pick<LessonStep, 'kind' | 'settings' | 'verseKeys'>
+
+/**
+ * Упражнения для одного стиха, который уже учится: «главное» (его сложность достаточна для роста силы)
+ * и одно дополнительное на выбор. Главное идёт последним.
+ */
+function reviewSteps(v: VerseState, all: VerseState[], rng: Rng): Candidate[] {
+  const s = v.strength
+  const own = [v.key]
+  const run = followingVerses(v, all)
+  const parts: Candidate | null = run.length > 0 ? { kind: 'orderParts', settings: {}, verseKeys: [v.key, ...run.map((x) => x.key)] } : null
+  const c = (kind: LessonStep['kind'], settings: StepSettings): Candidate => ({ kind, settings, verseKeys: own })
+
+  let gate: Candidate
+  let others: Candidate[]
+  if (s <= 1) {
+    gate = c('fillGaps', gapSettings(s))
+    others = [c('partial', partialSettings(s)), c('whereWritten', { levels: 1 })]
+  } else if (s === 2) {
+    gate = c('assemble', { pieces: 6 })
+    others = [c('fillGaps', gapSettings(s)), c('partial', partialSettings(s))]
+  } else if (s === 3) {
+    gate = parts ?? c('assemble', { pieces: 9 })
+    others = [c('whereWritten', { levels: 2 }), c('fillGaps', gapSettings(s))]
+  } else if (s === 4) {
+    gate = parts ?? c('assemble', { pieces: 12 })
+    others = [c('fillGaps', gapSettings(s)), c('whereWritten', { levels: 3 })]
+  } else {
+    gate = c('fillGaps', gapSettings(s))
+    others = [c('whereWritten', { levels: 3 }), c('assemble', { pieces: 14 })]
+  }
+  return [shuffle(others, rng)[0], gate]
+}
+
+/**
+ * Простой урок: новые стихи (открытие → скрытый текст → пропуски), затем повторение.
+ * all — все стихи пользователя (нужны, чтобы найти стихи подряд для «Расставьте части»).
+ */
+export function planLesson(verses: VerseState[], now: number, rng: Rng = Math.random): LessonStep[] {
   const picked = pickVerses(verses, now)
   const steps: LessonStep[] = []
   let n = 0
-  const add = (kind: LessonStep['kind'], v: VerseState, settings: StepSettings) =>
-    steps.push({ id: `${kind}:${v.key}:${n++}`, kind, verseKeys: [v.key], settings })
+  const add = (c: Candidate) => steps.push({ id: `${c.kind}:${c.verseKeys.join('+')}:${n++}`, ...c })
 
   for (const v of picked.filter((x) => x.strength === 0)) {
-    add('reveal', v, { chunk: 2 })
-    add('partial', v, partialSettings(0))
-    add('fillGaps', v, gapSettings(0))
+    add({ kind: 'reveal', verseKeys: [v.key], settings: { chunk: 2 } })
+    add({ kind: 'partial', verseKeys: [v.key], settings: partialSettings(0) })
+    add({ kind: 'fillGaps', verseKeys: [v.key], settings: gapSettings(0) })
   }
   for (const v of picked.filter((x) => x.strength > 0)) {
-    add('partial', v, partialSettings(v.strength))
-    add('fillGaps', v, gapSettings(v.strength))
+    for (const c of reviewSteps(v, verses, rng)) add(c)
   }
   return steps
 }

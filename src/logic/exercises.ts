@@ -163,7 +163,7 @@ const STRONG_END = /[.!?…][»"')\]]*$/
 const WEAK_END = /[,;:—–][»"')\]]*$/
 
 /** Где разрезать строку из слов: у знака препинания рядом с серединой (конец предложения лучше запятой) */
-function splitPoint(words: string[]): number {
+export function splitPoint(words: string[]): number {
   const mid = words.length / 2
   let best = -1
   let bestCost = Infinity
@@ -410,4 +410,23 @@ export function buildErrors(words: FlatWord[], difficulty: Difficulty, rng: Rng 
     result.push({ wordIndex: i, original: w.core, fake, options: shuffle([w.core, ...rest], rng) })
   }
   return result.sort((a, b) => a.wordIndex - b.wordIndex)
+}
+
+/**
+ * Делит текст на указанное число частей примерно равной длины, предпочитая границы по знакам препинания.
+ * Если слов не больше, чем частей, каждое слово становится отдельной частью.
+ */
+export function splitIntoPieces(text: string, pieces: number): string[] {
+  const words = text.split(/\s+/).filter(Boolean)
+  if (words.length <= pieces) return words
+  const units = [words]
+  while (units.length < pieces) {
+    let longest = 0
+    units.forEach((u, i) => { if (u.length > units[longest].length) longest = i })
+    if (units[longest].length < 2) break
+    const u = units[longest]
+    const at = splitPoint(u)
+    units.splice(longest, 1, u.slice(0, at), u.slice(at))
+  }
+  return units.map((u) => u.join(' '))
 }

@@ -5,7 +5,7 @@ import { formatRange, parseKey, TRANSLATION } from '../bible/refs'
 import { liveVerses, recordVerseResult } from '../db/db'
 import { planLesson } from '../lessons/generator'
 import LessonRunner from '../lessons/LessonRunner'
-import { KIND_TIER, type LessonStep, type StepOutcome, type StepResult, type VerseText } from '../lessons/types'
+import { stepTier, type LessonStep, type StepOutcome, type StepResult, type VerseText } from '../lessons/types'
 
 interface Loaded {
   steps: LessonStep[]
@@ -27,6 +27,8 @@ async function loadTexts(keys: string[]): Promise<Map<string, VerseText>> {
       ref: formatRange({ book: p.book, chapter: p.chapter, from: p.verse, to: p.verse }),
       text,
       chapterText: verses.filter(Boolean).join(' '),
+      bookChapters: chapters.length,
+      chapterVerses: verses.length,
     })
   }
   return out
@@ -56,7 +58,7 @@ export default function LessonPage() {
   }, [round])
 
   async function record(step: LessonStep, result: StepResult): Promise<StepOutcome> {
-    const tier = KIND_TIER[step.kind]
+    const tier = stepTier(step)
     if (result.neutral || tier === null) return { xp: 0, changes: [] }
     let xp = 0
     const changes: StepOutcome['changes'] = []

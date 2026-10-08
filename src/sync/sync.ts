@@ -25,8 +25,11 @@ function fail(error: { message: string } | null) {
   if (error) throw new Error(error.message)
 }
 
+/** Столбец, по которому однозначно упорядочиваются записи с одинаковым временем: у стихов это key, у остальных uid */
+const ORDER_COLUMN = { texts: 'uid', attempts: 'uid', reviews: 'uid', verses: 'key' } as const
+
 /** Забирает все записи таблицы, изменённые после `since`, страницами */
-async function fetchChanged<T>(table: 'texts' | 'attempts' | 'verses' | 'reviews', since: string): Promise<T[]> {
+async function fetchChanged<T>(table: keyof typeof ORDER_COLUMN, since: string): Promise<T[]> {
   const out: T[] = []
   for (let from = 0; ; from += PAGE) {
     const { data, error } = await supabase!
@@ -34,7 +37,7 @@ async function fetchChanged<T>(table: 'texts' | 'attempts' | 'verses' | 'reviews
       .select('*')
       .gt('server_updated_at', since)
       .order('server_updated_at', { ascending: true })
-      .order('uid', { ascending: true })
+      .order(ORDER_COLUMN[table], { ascending: true })
       .range(from, from + PAGE - 1)
     fail(error)
     const rows = (data ?? []) as T[]
