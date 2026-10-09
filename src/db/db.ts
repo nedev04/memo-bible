@@ -69,6 +69,14 @@ class AppDB extends Dexie {
     this.version(5).stores({
       lessons: '++id, uid, createdAt, dirty',
     })
+    // v6: стадия повторения отделена от силы; у существующих стихов стадия равна прежней силе (так считались интервалы)
+    this.version(6)
+      .stores({})
+      .upgrade((tx) =>
+        tx.table('verses').toCollection().modify((v: Record<string, unknown>) => {
+          if (typeof v.stage !== 'number') v.stage = typeof v.strength === 'number' ? v.strength : 0
+        }),
+      )
   }
 }
 
@@ -242,7 +250,7 @@ export async function addVerses(refs: VerseRef[], translation = TRANSLATION): Pr
         await db.verses.update(key, { deletedAt: null, addedAt: now })
       } else {
         await db.verses.add({
-          key, translation, ...ref, addedAt: now, strength: 0, nextReviewAt: now, updatedAt: now,
+          key, translation, ...ref, addedAt: now, strength: 0, stage: 0, nextReviewAt: now, updatedAt: now,
           lastUpAt: null, lastPracticedAt: null, lastScore: null, lapses: 0,
         })
       }

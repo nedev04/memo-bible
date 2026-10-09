@@ -65,7 +65,7 @@ describe('слияние', () => {
 
 describe('стихи и журнал', () => {
   const verse: VerseState = {
-    key: 'rst:mat:5:7', translation: 'rst', book: 'mat', chapter: 5, verse: 7, addedAt: 10, strength: 3, nextReviewAt: 500,
+    key: 'rst:mat:5:7', translation: 'rst', book: 'mat', chapter: 5, verse: 7, addedAt: 10, strength: 3, stage: 2, nextReviewAt: 500,
     lastUpAt: 400, lastPracticedAt: 450, lastScore: 90, lapses: 1, updatedAt: 460, dirty: 1,
   }
   const review: VerseReview = { id: 5, uid: 'r1', verseKey: verse.key, exercise: 'typing', tier: 3, score: 95, xp: 14, createdAt: 450, dirty: 1 }
@@ -83,6 +83,14 @@ describe('стихи и журнал', () => {
     const back = rowToVerse(verseToRow(fresh, 'u'))
     expect(back.lastUpAt).toBeNull()
     expect(back.deletedAt).toBe(999)
+  })
+
+  it('старая строка без стадии получает стадию по силе', () => {
+    const legacy = { ...verseToRow(verse, 'u'), stage: 0 }
+    expect(rowToVerse(legacy).stage).toBe(3)
+    expect(rowToVerse({ ...legacy, stage: undefined }).stage).toBe(3)
+    expect(rowToVerse({ ...legacy, stage: 2 }).stage).toBe(2)
+    expect(rowToVerse({ ...legacy, strength: 0, stage: 0 }).stage).toBe(0)
   })
 
   it('журнал: туда и обратно', () => {

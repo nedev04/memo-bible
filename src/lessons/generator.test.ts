@@ -13,7 +13,7 @@ const T0 = new Date('2026-03-10T10:00:00').getTime()
 function verse(n: number, over: Partial<VerseState> = {}): VerseState {
   return {
     key: `rst:mat:5:${n}`, translation: 'rst', book: 'mat', chapter: 5, verse: n,
-    addedAt: T0, strength: 0, nextReviewAt: T0, updatedAt: T0,
+    addedAt: T0, strength: 0, stage: 0, nextReviewAt: T0, updatedAt: T0,
     lastUpAt: null, lastPracticedAt: null, lastScore: null, lapses: 0, ...over,
   }
 }
@@ -54,22 +54,49 @@ describe('подбор стихов', () => {
 describe('план урока', () => {
   const kinds = (steps: { kind: string }[]) => steps.map((s) => s.kind)
 
-  it('новый стих: открытие → скрытый текст → пропуски', () => {
-    const steps = planLesson([verse(1)], T0, seeded(1))
-    expect(kinds(steps)).toEqual(['reveal', 'partial', 'fillGaps'])
-    expect(new Set(steps.map((s) => s.id)).size).toBe(steps.length)
+  it('новый стих: знакомство, затем три несложных упражнения в свободном порядке', () => {
+    const orders = new Set<string>()
+    for (let i = 1; i <= 20; i++) {
+      const steps = planLesson([verse(1)], T0, seeded(i))
+      expect(kinds(steps).slice(0, 2)).toEqual(['reveal', 'partial'])
+      const practice = steps.slice(2)
+      expect(practice).toHaveLength(3)
+      practice.forEach((s) => expect(['fillGaps', 'assemble', 'whereWritten']).toContain(s.kind))
+      practice.forEach((s) => {
+        if (s.kind === 'assemble') expect(s.settings.pieces).toBe(4)
+        if (s.kind === 'whereWritten') expect(s.settings.levels).toBe(1)
+      })
+      expect(new Set(steps.map((s) => s.id)).size).toBe(steps.length)
+      orders.add(kinds(practice).join())
+    }
+    expect(orders.size).toBeGreaterThan(1) // порядок не фиксирован
   })
 
-  it('повторение: одно дополнительное упражнение и «главное» последним, сложность зависит от силы', () => {
+  it('несколько новых стихов: сначала знакомство со всеми, потом упражнения вперемешку', () => {
+    const steps = planLesson([verse(1), verse(2)], T0, seeded(4))
+    expect(kinds(steps).slice(0, 4)).toEqual(['reveal', 'partial', 'reveal', 'partial'])
+    const practice = steps.slice(4)
+    expect(practice).toHaveLength(6)
+    expect(new Set(practice.map((s) => s.verseKeys[0]))).toEqual(new Set(['rst:mat:5:1', 'rst:mat:5:2']))
+  })
+
+  it('повторение: «главное» упражнение последним, сложность зависит от силы', () => {
     const gateFor = (strength: number) =>
-      planLesson([verse(1, { strength, nextReviewAt: T0 - DAY })], T0, seeded(3)).at(-1)!
+      planLesson([verse(1, { strength, stage: 1, nextReviewAt: T0 + 5 * DAY })], T0, seeded(3)).at(-1)!
     expect(gateFor(1).kind).toBe('fillGaps')
     expect(gateFor(2).kind).toBe('assemble')
     expect(gateFor(2).settings.pieces).toBe(6)
     expect(gateFor(3).kind).toBe('assemble')
     expect(gateFor(3).settings.pieces).toBe(9)
     expect(gateFor(5).kind).toBe('fillGaps')
-    expect(planLesson([verse(1, { strength: 3, nextReviewAt: T0 - DAY })], T0, seeded(3))).toHaveLength(2)
+  })
+
+  it('стиху, которому подошёл срок, достаётся больше упражнений', () => {
+    const notDue = planLesson([verse(1, { strength: 3, stage: 3, nextReviewAt: T0 + 3 * DAY })], T0, seeded(3))
+    const due = planLesson([verse(1, { strength: 3, stage: 3, nextReviewAt: T0 - DAY })], T0, seeded(3))
+    expect(notDue).toHaveLength(2)
+    expect(due).toHaveLength(3)
+    expect(due.at(-1)!.kind).toBe(notDue.at(-1)!.kind)
   })
 
   it('если рядом учатся соседние стихи, на сильных стихах предлагается «Расставьте части»', () => {

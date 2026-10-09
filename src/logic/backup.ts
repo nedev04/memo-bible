@@ -43,7 +43,7 @@ export function createBackup(texts: TextItem[], attempts: Attempt[], now: number
         .filter((v) => !v.deletedAt)
         .map((v) => ({
           key: v.key, translation: v.translation, book: v.book, chapter: v.chapter, verse: v.verse,
-          addedAt: v.addedAt, strength: v.strength, nextReviewAt: v.nextReviewAt,
+          addedAt: v.addedAt, strength: v.strength, stage: v.stage, nextReviewAt: v.nextReviewAt,
           lastUpAt: v.lastUpAt, lastPracticedAt: v.lastPracticedAt, lastScore: v.lastScore, lapses: v.lapses,
         })),
       attempts: attempts
@@ -89,8 +89,10 @@ function readVerse(v: unknown): BackupVerse | null {
   if (!isNum(addedAt) || !isNum(nextReviewAt) || !isNum(strength) || strength < 0 || strength > 6) return null
   // Поля прогресса появились позже: в старых копиях их нет
   const orNull = (x: unknown) => (isNum(x) ? x : null)
+  // В копиях прежних версий стадии нет: тогда расписание считалось по силе
+  const stage = isNum(v.stage) && v.stage >= 0 && v.stage <= 6 ? v.stage : strength
   return {
-    key: v.key, ...ref, addedAt, strength, nextReviewAt,
+    key: v.key, ...ref, addedAt, strength, stage, nextReviewAt,
     lastUpAt: orNull(v.lastUpAt), lastPracticedAt: orNull(v.lastPracticedAt), lastScore: orNull(v.lastScore),
     lapses: isNum(v.lapses) && v.lapses >= 0 ? v.lapses : 0,
   }

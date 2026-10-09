@@ -131,10 +131,11 @@ export function followingVerses(v: VerseState, all: VerseState[]): VerseState[] 
 type Candidate = Pick<LessonStep, 'kind' | 'settings' | 'verseKeys'>
 
 /**
- * Упражнения для одного стиха, который уже учится: дополнительное на выбор и «главное»
+ * Упражнения для одного стиха, который уже учится: дополнительные и «главное»
  * (его сложности достаточно для роста силы). Главное идёт последним.
+ * Если стиху подошёл срок повторения, дополнительных упражнений два вместо одного: в этот день он встречается чаще.
  */
-function reviewSteps(v: VerseState, all: VerseState[], rng: Rng): Candidate[] {
+function reviewSteps(v: VerseState, all: VerseState[], rng: Rng, now: number): Candidate[] {
   const s = v.strength
   const own = [v.key]
   const run = followingVerses(v, all)
@@ -159,7 +160,7 @@ function reviewSteps(v: VerseState, all: VerseState[], rng: Rng): Candidate[] {
     gate = c('fillGaps', gapSettings(s))
     others = [c('whereWritten', { levels: 3 }), c('assemble', { pieces: 14 })]
   }
-  return [shuffle(others, rng)[0], gate]
+  return [...shuffle(others, rng).slice(0, isDue(v, now) ? 2 : 1), gate]
 }
 
 function toSteps(candidates: Candidate[]): LessonStep[] {
@@ -170,16 +171,32 @@ function toSteps(candidates: Candidate[]): LessonStep[] {
 
 const restrict = (all: VerseState[], only?: Set<string>) => (only ? all.filter((v) => only.has(v.key)) : all)
 
-/** Обычный урок: новые стихи (открытие → скрытый текст → пропуски), затем повторение */
+/** Несложные упражнения для только что изученного стиха (порядок свободный) */
+function easyPractice(v: VerseState, rng: Rng): Candidate[] {
+  const own = [v.key]
+  const pool: Candidate[] = [
+    { kind: 'fillGaps', verseKeys: own, settings: { blanks: 1, options: 3 } },
+    { kind: 'fillGaps', verseKeys: own, settings: { blanks: 2, options: 3 } },
+    { kind: 'assemble', verseKeys: own, settings: { pieces: 4 } },
+    { kind: 'whereWritten', verseKeys: own, settings: { levels: 1 } },
+  ]
+  return shuffle(pool, rng).slice(0, 3)
+}
+
+/**
+ * Обычный урок. Новые стихи: сначала знакомство (открытие, скрытый текст), затем несколько несложных упражнений
+ * вперемешку по всем новым стихам. Затем повторение стихов, которые уже учатся.
+ */
 export function planRegular(all: VerseState[], now: number, rng: Rng = Math.random, only?: Set<string>): LessonStep[] {
   const picked = only ? restrict(all, only).sort(byBible).slice(0, MAX_VERSES) : pickVerses(all, now)
+  const fresh = picked.filter((x) => x.strength === 0)
   const out: Candidate[] = []
-  for (const v of picked.filter((x) => x.strength === 0)) {
+  for (const v of fresh) {
     out.push({ kind: 'reveal', verseKeys: [v.key], settings: { chunk: 2 } })
     out.push({ kind: 'partial', verseKeys: [v.key], settings: partialSettings(0) })
-    out.push({ kind: 'fillGaps', verseKeys: [v.key], settings: gapSettings(0) })
   }
-  for (const v of picked.filter((x) => x.strength > 0)) out.push(...reviewSteps(v, all, rng))
+  out.push(...shuffle(fresh.flatMap((v) => easyPractice(v, rng)), rng))
+  for (const v of picked.filter((x) => x.strength > 0)) out.push(...reviewSteps(v, all, rng, now))
   return toSteps(out)
 }
 
@@ -187,7 +204,7 @@ export function planRegular(all: VerseState[], now: number, rng: Rng = Math.rand
 export function planReview(all: VerseState[], now: number, rng: Rng = Math.random, only?: Set<string>): LessonStep[] {
   const pool = all.filter((v) => v.strength >= 1)
   const picked = only ? restrict(pool, only).sort(byBible).slice(0, MAX_VERSES) : pickReviewVerses(all, now, rng)
-  return toSteps(picked.flatMap((v) => reviewSteps(v, all, rng)))
+  return toSteps(picked.flatMap((v) => reviewSteps(v, all, rng, now)))
 }
 
 /**

@@ -132,6 +132,7 @@ export interface VerseRow {
   verse: number
   added_at: number
   strength: number
+  stage?: number
   next_review_at: number
   last_up_at: number | null
   last_practiced_at: number | null
@@ -165,6 +166,7 @@ export function verseToRow(v: VerseState, userId: string): VerseRow {
     verse: v.verse,
     added_at: v.addedAt,
     strength: v.strength,
+    stage: v.stage,
     next_review_at: v.nextReviewAt,
     last_up_at: v.lastUpAt,
     last_practiced_at: v.lastPracticedAt,
@@ -186,6 +188,8 @@ export function rowToVerse(r: VerseRow): VerseState {
     verse: r.verse,
     addedAt: Number(r.added_at),
     strength: r.strength,
+    // Строки, записанные до появления стадии, имеют стадию 0 при ненулевой силе: расписание тогда считалось по силе
+    stage: r.stage && r.stage > 0 ? r.stage : r.strength,
     nextReviewAt: Number(r.next_review_at),
     lastUpAt: orNull(r.last_up_at),
     lastPracticedAt: orNull(r.last_practiced_at),

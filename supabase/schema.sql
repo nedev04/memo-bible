@@ -174,3 +174,12 @@ drop policy if exists "lessons: own rows" on public.lessons;
 create policy "lessons: own rows" on public.lessons
   for all to authenticated
   using (user_id = auth.uid()) with check (user_id = auth.uid());
+
+
+-- =====================================================================
+-- Версия 4: стадия повторения у стихов (расписание отделено от силы).
+-- Выполните файл целиком ещё раз. Строки, созданные раньше, получат стадию 0;
+-- приложение само пересчитает её по силе при чтении.
+-- =====================================================================
+
+alter table public.verses add column if not exists stage int not null default 0;

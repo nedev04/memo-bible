@@ -50,13 +50,13 @@ describe('backup', () => {
   it('стихи сохраняются и читаются, повреждённые пропускаются', () => {
     const verse: VerseState = {
       key: 'rst:mat:5:7', translation: 'rst', book: 'mat', chapter: 5, verse: 7,
-      addedAt: T0, strength: 2, nextReviewAt: T0 + 5, updatedAt: T0, dirty: 1,
+      addedAt: T0, strength: 2, stage: 3, nextReviewAt: T0 + 5, updatedAt: T0, dirty: 1,
       lastUpAt: T0, lastPracticedAt: T0, lastScore: 95, lapses: 1,
     }
     const data = parseBackup(createBackup([], [], T0, [verse, { ...verse, key: 'rst:mat:5:8', verse: 8, deletedAt: T0 }]))
     expect(data.verses).toHaveLength(1)
     expect(data.verses[0]).toMatchObject({
-      key: 'rst:mat:5:7', book: 'mat', chapter: 5, verse: 7, strength: 2, lastUpAt: T0, lastScore: 95, lapses: 1,
+      key: 'rst:mat:5:7', book: 'mat', chapter: 5, verse: 7, strength: 2, stage: 3, lastUpAt: T0, lastScore: 95, lapses: 1,
     })
 
     const raw = JSON.parse(createBackup([], [], T0, [verse]))
@@ -71,7 +71,7 @@ describe('backup', () => {
       app: 'memorize-by-heart', version: 1, exportedAt: T0, texts: [], attempts: [],
       verses: [{ key: 'rst:mat:5:7', addedAt: T0, strength: 1, nextReviewAt: T0 }],
     }
-    expect(parseBackup(JSON.stringify(raw)).verses[0]).toMatchObject({ lastUpAt: null, lastScore: null, lapses: 0 })
+    expect(parseBackup(JSON.stringify(raw)).verses[0]).toMatchObject({ lastUpAt: null, lastScore: null, lapses: 0, stage: 1 })
   })
 
   it('старые копии без стихов читаются', () => {
