@@ -200,12 +200,13 @@ button, a, .reveal, .exwrap { touch-action: manipulation; }
 .tapword.alarm { color: var(--bad); text-decoration: line-through; text-decoration-style: dashed; }
 
 /* Экран «Сегодня» */
-.muted { color: var(--muted); margin: -0.5rem 0 0.5rem; }
+.muted { color: var(--muted); margin: 0.6rem 0 0.8rem; }
+h1 + .muted { margin-top: -0.5rem; }
 .today-item { padding: 1rem 0; }
 .today-item .title-link { text-decoration: none; }
 .today-item .title-link strong { font-size: 1.05rem; }
 .reason { margin: 0.7rem 0 0.5rem; color: var(--muted); font-size: 0.95rem; }
-.btn.start { display: block; width: 100%; }
+.btn.start { display: block; width: 100%; margin-top: 0.4rem; }
 .recommend { margin: 1.2rem 0 0; padding: 0.9rem 1rem; border-left: 4px solid var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
 .recommend small { margin-bottom: 0.5rem; }
 .recommend .btn { display: block; }
@@ -302,7 +303,9 @@ input[type="file"] { max-width: 100%; color: var(--ink); }
 .verse-row .vstatus { margin-top: 0.1rem; }
 
 /* Урок */
-.lesson { padding-bottom: 7rem; }
+.lesson { padding-bottom: 1rem; }
+.lesson.has-feedback { padding-bottom: 9rem; }
+.lesson .reveal { min-height: 55dvh; }
 .lesson-top { display: flex; align-items: center; gap: 0.8rem; margin: 0.2rem 0 1rem; }
 .lesson-top .pbar { flex: 1; margin: 0; }
 .lesson-top .pbar-track { height: 12px; border-radius: 6px; }
@@ -356,12 +359,12 @@ input[type="file"] { max-width: 100%; color: var(--ink); }
 .piece-btn:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 .grip { display: grid; place-items: center; padding: 0 0.6rem; color: var(--muted); cursor: grab; touch-action: none; letter-spacing: -2px; -webkit-user-select: none; user-select: none; }
 .plabel { color: var(--muted); font-family: var(--font-ui); margin-right: 0.35rem; }
-.ghost {
+.drag-ghost {
   position: fixed; z-index: 30; pointer-events: none; transform: translate(-50%, -50%);
   padding: 0.5rem 0.8rem; max-width: 80vw; border-radius: 8px; background: var(--accent); color: var(--accent-ink);
   font-family: var(--font-text); box-shadow: 0 6px 18px rgba(0, 0, 0, 0.3); opacity: 0.95;
 }
-.ghost.blocks { font-size: 1rem; max-width: 70vw; white-space: normal; }
+.drag-ghost.blocks { font-size: 1rem; max-width: 70vw; white-space: normal; }
 .correct-text { font-family: var(--font-text); font-size: 1.15rem; line-height: 1.6; margin: 0; }
 
 /* Где написано */

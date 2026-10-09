@@ -138,7 +138,7 @@ export default function OrderBoard({ texts, layout, labels, hint, onDone }: Prop
       )}
 
       {drag && (
-        <div className={`ghost ${layout}`} style={{ left: drag.x, top: drag.y }}>{texts[drag.id]}</div>
+        <div className={`drag-ghost ${layout}`} style={{ left: drag.x, top: drag.y }}>{texts[drag.id]}</div>
       )}
 
       {!checked && (

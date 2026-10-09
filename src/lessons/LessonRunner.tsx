@@ -117,7 +117,7 @@ export default function LessonRunner({ steps, texts, record, onClose, onAnother 
   const finished = index + (result ? 1 : 0)
 
   return (
-    <div className="lesson">
+    <div className={result ? 'lesson has-feedback' : 'lesson'}>
       <div className="lesson-top">
         <button className="lesson-close" onClick={close} aria-label="Выйти из урока">✕</button>
         <ProgressBar value={finished} max={total} />
