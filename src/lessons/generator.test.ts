@@ -201,3 +201,86 @@ describe('пропуски в стихе', () => {
     expect(buildVerseGaps(flattenWords('да'), flattenWords('да'), 1, 3)).toEqual([])
   })
 })
+
+import { availableTypes, patternType, planOfType, planReview, planTest, resolveType, reviewWeight, weightedSample } from './generator'
+
+describe('типы уроков', () => {
+  it('порядок на пути повторяется: два обычных, закрепление, обычный, тест', () => {
+    expect([0, 1, 2, 3, 4, 5, 9].map(patternType)).toEqual(['regular', 'regular', 'review', 'regular', 'test', 'regular', 'test'])
+  })
+
+  it('нет стихов — нет урока', () => {
+    expect(resolveType('regular', [], T0)).toBeNull()
+  })
+
+  it('обычный урок без работы превращается в закрепление; тест без выученных — в закрепление или обычный', () => {
+    const calm = [verse(1, { strength: 2, nextReviewAt: T0 + 5 * DAY })]
+    expect(resolveType('regular', calm, T0)).toBe('review')
+    expect(resolveType('regular', [verse(1)], T0)).toBe('regular')
+    expect(resolveType('test', calm, T0)).toBe('review')
+    expect(resolveType('test', [verse(1)], T0)).toBe('regular')
+    expect(resolveType('test', [verse(1, { strength: 4, nextReviewAt: T0 + DAY })], T0)).toBe('test')
+    expect(resolveType('review', [verse(1)], T0)).toBe('regular')
+    expect(availableTypes([verse(1, { strength: 3 })])).toEqual({ regular: true, review: true, test: true })
+  })
+})
+
+describe('выборка с весами', () => {
+  it('без повторов, не больше k, вес 0 попадает в конец', () => {
+    const r = weightedSample([1, 2, 3, 4], (n) => (n === 4 ? 0 : 10), 3, seeded(1))
+    expect(new Set(r).size).toBe(3)
+    expect(r).not.toContain(4)
+  })
+
+  it('тяжёлые элементы выбираются чаще', () => {
+    let heavy = 0
+    for (let i = 0; i < 200; i++) if (weightedSample(['a', 'b'], (x) => (x === 'a' ? 9 : 1), 1, seeded(i + 1))[0] === 'a') heavy++
+    expect(heavy).toBeGreaterThan(140)
+  })
+})
+
+describe('закрепление', () => {
+  it('новых стихов нет; стих с ошибкой весомее твёрдо выученного', () => {
+    const verses = [verse(1), verse(2, { strength: 2, nextReviewAt: T0 - DAY }), verse(3, { strength: 6, nextReviewAt: T0 + 30 * DAY, addedAt: T0 - 90 * DAY })]
+    const steps = planReview(verses, T0, seeded(5))
+    expect(steps.every((s) => !s.verseKeys.includes('rst:mat:5:1'))).toBe(true)
+    expect(steps.length).toBeGreaterThan(0)
+    expect(reviewWeight(verse(4, { strength: 3, lastScore: 30, nextReviewAt: T0 + DAY }), T0))
+      .toBeGreaterThan(reviewWeight(verse(5, { strength: 6, nextReviewAt: T0 + 30 * DAY, addedAt: T0 - 90 * DAY }), T0))
+  })
+
+  it('без начатых стихов плана нет', () => {
+    expect(planReview([verse(1)], T0, seeded(1))).toEqual([])
+  })
+})
+
+describe('тест', () => {
+  it('одно задание «ввод по памяти» по стиху с силой не ниже 3; соседние выученные стихи добавляются', () => {
+    const verses = [
+      verse(7, { strength: 4, nextReviewAt: T0 - DAY }),
+      verse(8, { strength: 3 }),
+      verse(9, { strength: 1 }),
+    ]
+    const results = new Set<string>()
+    for (let i = 1; i <= 30; i++) {
+      const steps = planTest(verses, T0, seeded(i))
+      expect(steps).toHaveLength(1)
+      expect(steps[0].kind).toBe('typing')
+      results.add(steps[0].verseKeys.join())
+    }
+    // начало с седьмого стиха захватывает и восьмой; девятый ещё слаб и в тест не попадает
+    expect([...results].sort()).toEqual(['rst:mat:5:7,rst:mat:5:8', 'rst:mat:5:8'])
+  })
+
+  it('нет выученных стихов — нет теста', () => {
+    expect(planTest([verse(1, { strength: 2 })], T0, seeded(1))).toEqual([])
+  })
+
+  it('повтор урока ограничивается теми же стихами', () => {
+    const verses = [verse(7, { strength: 4 }), verse(8, { strength: 4 })]
+    const steps = planOfType('test', verses, T0, seeded(1), new Set(['rst:mat:5:8']))
+    expect(steps[0].verseKeys).toEqual(['rst:mat:5:8'])
+    const regular = planOfType('regular', [verse(1), verse(2), verse(3, { strength: 3 })], T0, seeded(1), new Set(['rst:mat:5:2']))
+    expect(regular.every((s) => s.verseKeys.every((k) => k === 'rst:mat:5:2'))).toBe(true)
+  })
+})

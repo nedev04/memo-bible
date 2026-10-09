@@ -142,3 +142,35 @@ create policy "verses: own rows" on public.verses
 create policy "reviews: own rows" on public.reviews
   for all to authenticated
   using (user_id = auth.uid()) with check (user_id = auth.uid());
+
+
+-- =====================================================================
+-- Версия 3: история уроков (путь на главной).
+-- Выполните файл целиком ещё раз: он дополняет схему, существующие данные не затрагивает.
+-- =====================================================================
+
+create table if not exists public.lessons (
+  user_id            uuid   not null default auth.uid() references auth.users (id) on delete cascade,
+  uid                uuid   not null,
+  type               text   not null,
+  status             text   not null,
+  verse_keys         jsonb  not null default '[]'::jsonb,
+  xp                 int    not null default 0,
+  mistakes           int    not null default 0,
+  created_at         bigint not null,
+  server_updated_at  timestamptz not null default clock_timestamp(),
+  primary key (user_id, uid)
+);
+
+create index if not exists lessons_sync_idx on public.lessons (user_id, server_updated_at);
+
+drop trigger if exists lessons_touch on public.lessons;
+create trigger lessons_touch before insert or update on public.lessons
+  for each row execute function public.touch_server_time();
+
+alter table public.lessons enable row level security;
+
+drop policy if exists "lessons: own rows" on public.lessons;
+create policy "lessons: own rows" on public.lessons
+  for all to authenticated
+  using (user_id = auth.uid()) with check (user_id = auth.uid());

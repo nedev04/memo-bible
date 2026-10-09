@@ -1,114 +1,159 @@
 import { useLiveQuery } from 'dexie-react-hooks'
+import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { useSync } from '../sync/SyncProvider'
-import LevelProgress from '../components/LevelProgress'
+import { formatRange, groupVerses, parseKey } from '../bible/refs'
 import { getLastBackup } from '../db/backupMeta'
-import { db, liveTexts, liveVerses } from '../db/db'
-import { isDue } from '../logic/mastery'
-import { DIFFICULTY_LABEL, EXERCISES } from '../logic/config'
-import { dueLabel, exerciseLink, overdueLabel, recommend, sameDay } from '../logic/progress'
-import type { Attempt } from '../types'
+import { liveLessons, liveTexts, liveVerses, saveLesson } from '../db/db'
+import { patternType, resolveType } from '../lessons/generator'
+import { LESSON_TYPE_INFO } from '../lessons/typeInfo'
+import { isDue, needsAttention } from '../logic/mastery'
+import { useSync } from '../sync/SyncProvider'
+import type { LessonRecord, LessonType } from '../types'
+
+type NodeState = 'done' | 'skipped' | 'current' | 'future'
+interface PathNode {
+  key: string
+  number: number
+  state: NodeState
+  type: LessonType
+  lesson?: LessonRecord
+}
+
+/** Смещение узлов по горизонтали, px: путь «змейкой» */
+const OFFSETS = [0, 34, 54, 34, 0, -34, -54, -34]
+const PAST_SHOWN = 5
+const FUTURE_SHOWN = 4
+
+function refsOf(keys: string[]): string {
+  const refs = keys.map(parseKey).filter((p): p is NonNullable<typeof p> => p !== null)
+  return groupVerses(refs).map(formatRange).join(', ')
+}
 
 export default function TodayPage() {
   const { user } = useSync()
-  const texts = useLiveQuery(() => liveTexts(), [])
-  const attempts = useLiveQuery(() => db.attempts.toArray(), [])
   const verses = useLiveQuery(() => liveVerses(), [])
-  if (!texts || !attempts || !verses) return null
+  const lessons = useLiveQuery(() => liveLessons(), [])
+  const texts = useLiveQuery(() => liveTexts(), [])
+  const [open, setOpen] = useState<string | null>('current')
+  const currentRef = useRef<HTMLLIElement>(null)
+  const scrolled = useRef(false)
+
+  useEffect(() => {
+    if (!scrolled.current && currentRef.current) {
+      scrolled.current = true
+      currentRef.current.scrollIntoView({ block: 'center' })
+    }
+  })
+
+  if (!verses || !lessons || !texts) return null
 
   const now = Date.now()
-  const byText = new Map<number, Attempt[]>()
-  for (const a of attempts) byText.set(a.textId, [...(byText.get(a.textId) ?? []), a])
-
-  const due = texts.filter((t) => now >= t.nextReviewAt).sort((a, b) => a.nextReviewAt - b.nextReviewAt)
-  const later = texts.filter((t) => now < t.nextReviewAt).sort((a, b) => a.nextReviewAt - b.nextReviewAt)
+  const doneCount = lessons.length
+  const currentType = resolveType(patternType(doneCount), verses, now)
 
   const lastBackup = getLastBackup()
-  const needBackup = !user && texts.length > 0 && (lastBackup === null || now - lastBackup > 14 * 24 * 60 * 60 * 1000)
+  const needBackup = !user && (verses.length > 0 || texts.length > 0) && (lastBackup === null || now - lastBackup > 14 * 24 * 60 * 60 * 1000)
+  const dueTexts = texts.filter((t) => now >= t.nextReviewAt).length
 
-  const todays = attempts.filter((a) => sameDay(a.createdAt, now))
-  const todayPoints = todays.reduce((n, a) => n + a.points, 0)
+  const past = lessons.slice(-PAST_SHOWN)
+  const firstNumber = doneCount - past.length + 1
+  const nodes: PathNode[] = past.map((l, i) => ({
+    key: l.uid, number: firstNumber + i, state: l.status, type: l.type, lesson: l,
+  }))
+  if (currentType) {
+    nodes.push({ key: 'current', number: doneCount + 1, state: 'current', type: currentType })
+    for (let k = 1; k <= FUTURE_SHOWN; k++) {
+      nodes.push({ key: `future-${k}`, number: doneCount + 1 + k, state: 'future', type: patternType(doneCount + k) })
+    }
+  }
+
+  const newCount = verses.filter((v) => v.strength === 0).length
+  const dueCount = verses.filter((v) => v.strength > 0 && (isDue(v, now) || needsAttention(v))).length
+
+  async function skip() {
+    if (!currentType) return
+    if (!confirm('Пропустить этот урок? Он попадёт в историю, а следующий будет собран заново.')) return
+    await saveLesson({ type: currentType, status: 'skipped', verseKeys: [], xp: 0, mistakes: 0 })
+    setOpen('current')
+  }
+
+  const glyph = (n: PathNode) => (n.state === 'done' ? '✓' : n.state === 'skipped' ? '»' : LESSON_TYPE_INFO[n.type].glyph)
 
   return (
     <>
       <h1>Сегодня</h1>
-      <p className="muted">
-        {todays.length === 0
-          ? 'Сегодня упражнений ещё не было.'
-          : `Сегодня: ${todays.length} упр. · ${todayPoints} очк.`}
-      </p>
-
-      {verses.length > 0 && (
-        <section className="lesson-card">
-          <strong>Урок по стихам</strong>
-          <small>
-            Новых: {verses.filter((v) => v.strength === 0).length} · к повторению: {verses.filter((v) => v.strength > 0 && isDue(v, now)).length}
-          </small>
-          <Link className="btn primary start" to="/lesson">Начать урок</Link>
-        </section>
-      )}
 
       {needBackup && (
         <p className="notice">
           Данные хранятся только на этом устройстве. <Link to="/data">Сохраните резервную копию</Link>, чтобы не потерять прогресс.
         </p>
       )}
-
-      {texts.length === 0 && (
-        <div className="empty">
-          <p>Здесь появятся тексты, которые пора повторить. Начните с первого.</p>
-          <Link className="btn primary" to="/new">Добавить текст</Link>
-        </div>
-      )}
-
-      {texts.length > 0 && due.length === 0 && (
-        <p className="empty">
-          На сегодня всё повторено.
-          {later.length > 0 && ` Ближайшее повторение: «${later[0].title}» — ${dueLabel(later[0].nextReviewAt, now).toLowerCase()}.`}
+      {dueTexts > 0 && (
+        <p className="notice">
+          Свои тексты к повторению: {dueTexts}. <Link to="/texts">Открыть</Link>
         </p>
       )}
 
-      {due.length > 0 && <h2>К повторению · {due.length}</h2>}
-      <ul className="list">
-        {due.map((t) => {
-          const history = byText.get(t.id!) ?? []
-          const rec = recommend(t, history, now)
-          const isNew = history.length === 0
-          return (
-            <li key={t.id} className="today-item">
-              <div className="row">
-                <span className="level">{t.level}</span>
-                <div className="grow">
-                  <Link to={`/text/${t.id}`} className="title-link"><strong>{t.title}</strong></Link>
-                  <small className={isNew ? undefined : 'due'}>
-                    {isNew ? 'Новый текст' : overdueLabel(t.nextReviewAt, now)}
-                  </small>
+      {verses.length === 0 ? (
+        <section className="lesson-card">
+          <strong>Начните с первых стихов</strong>
+          <small>Выберите книгу, главу и стихи, которые хотите выучить. Уроки соберутся автоматически.</small>
+          <Link className="btn primary start" to="/add">Добавить стихи</Link>
+        </section>
+      ) : (
+        <ol className="path">
+          {nodes.map((n, i) => {
+            const info = LESSON_TYPE_INFO[n.type]
+            const isOpen = open === n.key
+            return (
+              <li key={n.key} className="path-node" ref={n.state === 'current' ? currentRef : undefined}>
+                <div className="node-head" style={{ transform: `translateX(${OFFSETS[(n.number - 1) % OFFSETS.length]}px)` }}>
+                  <button
+                    className={`circle ${n.state}`}
+                    disabled={n.state === 'future'}
+                    aria-expanded={isOpen}
+                    aria-label={`Урок ${n.number}: ${info.label}${n.state === 'future' ? ', пока недоступен' : ''}`}
+                    onClick={() => setOpen(isOpen ? null : n.key)}
+                  >
+                    {glyph(n)}
+                  </button>
+                  <span className="node-label">{info.label}</span>
                 </div>
-              </div>
-              <LevelProgress text={t} />
-              <p className="reason">{rec.reason}</p>
-              <Link className="btn primary start" to={exerciseLink(t.id!, rec)}>
-                {EXERCISES[rec.exercise].title} · {DIFFICULTY_LABEL[rec.difficulty].toLowerCase()}
-              </Link>
-            </li>
-          )
-        })}
-      </ul>
 
-      {later.length > 0 && <h2>Позже</h2>}
-      <ul className="list">
-        {later.map((t) => (
-          <li key={t.id}>
-            <Link to={`/text/${t.id}`} className="list-item">
-              <span className="level">{t.level}</span>
-              <span className="grow">
-                <strong>{t.title}</strong>
-                <small>{dueLabel(t.nextReviewAt, now)}</small>
-              </span>
-            </Link>
-          </li>
-        ))}
-      </ul>
+                {isOpen && n.state === 'current' && (
+                  <div className="path-detail">
+                    <strong>Урок {n.number}: {info.label}</strong>
+                    <p>{info.description}</p>
+                    {n.type === 'regular' && <small>Новых стихов: {newCount} · к повторению: {dueCount}</small>}
+                    <Link className="btn primary start" to="/lesson">Начать</Link>
+                    <button className="btn ghost" onClick={skip}>Пропустить</button>
+                  </div>
+                )}
+
+                {isOpen && (n.state === 'done' || n.state === 'skipped') && n.lesson && (
+                  <div className="path-detail">
+                    <strong>Урок {n.number}: {info.label}</strong>
+                    {n.state === 'skipped' ? (
+                      <small>Пропущен</small>
+                    ) : (
+                      <>
+                        <small>+{n.lesson.xp} опыта · ошибок: {n.lesson.mistakes}</small>
+                        {n.lesson.verseKeys.length > 0 && <p>{refsOf(n.lesson.verseKeys)}</p>}
+                        {n.lesson.verseKeys.length > 0 && (
+                          <Link className="btn ghost" to={`/lesson?replay=${n.lesson.uid}`}>Повторить урок</Link>
+                        )}
+                      </>
+                    )}
+                  </div>
+                )}
+                {i === nodes.length - 1 && n.state === 'future' && (
+                  <small className="path-note">Состав будущих уроков определится, когда до них дойдёте: он зависит от результатов.</small>
+                )}
+              </li>
+            )
+          })}
+        </ol>
+      )}
     </>
   )
 }

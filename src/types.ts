@@ -91,3 +91,19 @@ export interface VerseReview {
   createdAt: number
   dirty?: 0 | 1
 }
+
+export type LessonType = 'regular' | 'review' | 'test'
+
+/** Пройденный (или пропущенный) урок на пути. Содержимое уроков не хранится: оно собирается заново, когда урок начинают. */
+export interface LessonRecord {
+  id?: number
+  uid: string
+  type: LessonType
+  status: 'done' | 'skipped'
+  /** Стихи, по которым был урок (нужны, чтобы повторить его позже) */
+  verseKeys: string[]
+  xp: number
+  mistakes: number
+  createdAt: number
+  dirty?: 0 | 1
+}

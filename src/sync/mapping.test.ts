@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import type { Attempt, TextItem, VerseReview, VerseState } from '../types'
+import type { Attempt, LessonRecord, TextItem, VerseReview, VerseState } from '../types'
 import {
-  attemptToRow, isKnownAttemptRow, isKnownVerseRow, maxServerTime, remoteWins, reviewToRow, rowToAttempt, rowToReview,
+  attemptToRow, isKnownAttemptRow, isKnownLessonRow, isKnownVerseRow, lessonToRow, rowToLesson, maxServerTime, remoteWins, reviewToRow, rowToAttempt, rowToReview,
   rowToText, rowToVerse, sinceIso, textToRow, verseToRow,
 } from './mapping'
 
@@ -94,5 +94,20 @@ describe('стихи и журнал', () => {
   it('непонятные ключи стихов пропускаются', () => {
     expect(isKnownVerseRow(verseToRow(verse, 'u'))).toBe(true)
     expect(isKnownVerseRow({ ...verseToRow(verse, 'u'), key: 'мусор' })).toBe(false)
+  })
+})
+
+describe('уроки', () => {
+  const lesson: LessonRecord = {
+    id: 3, uid: 'l1', type: 'review', status: 'done', verseKeys: ['rst:mat:5:7', 'rst:mat:5:8'], xp: 40, mistakes: 2, createdAt: 700, dirty: 1,
+  }
+  it('урок: туда и обратно', () => {
+    const row = lessonToRow(lesson, 'user')
+    expect(row.verse_keys).toEqual(['rst:mat:5:7', 'rst:mat:5:8'])
+    expect(rowToLesson(row)).toEqual({ uid: 'l1', type: 'review', status: 'done', verseKeys: ['rst:mat:5:7', 'rst:mat:5:8'], xp: 40, mistakes: 2, createdAt: 700, dirty: 0 })
+  })
+  it('неизвестные типы пропускаются', () => {
+    expect(isKnownLessonRow(lessonToRow(lesson, 'u'))).toBe(true)
+    expect(isKnownLessonRow({ ...lessonToRow(lesson, 'u'), type: 'boss' })).toBe(false)
   })
 })

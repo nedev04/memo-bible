@@ -1,6 +1,6 @@
 import { EXERCISES } from '../logic/config'
 import { parseKey } from '../bible/refs'
-import type { Attempt, Difficulty, ExerciseId, TextItem, VerseReview, VerseState } from '../types'
+import type { Attempt, Difficulty, ExerciseId, LessonRecord, TextItem, VerseReview, VerseState } from '../types'
 
 /** Строка таблицы texts в облаке */
 export interface TextRow {
@@ -221,6 +221,49 @@ export function rowToReview(r: ReviewRow): VerseReview {
     tier: r.tier as 1 | 2 | 3,
     score: r.score,
     xp: r.xp,
+    createdAt: Number(r.created_at),
+    dirty: 0,
+  }
+}
+
+/** Строка таблицы lessons в облаке */
+export interface LessonRow {
+  user_id?: string
+  uid: string
+  type: string
+  status: string
+  verse_keys: string[]
+  xp: number
+  mistakes: number
+  created_at: number
+  server_updated_at?: string
+}
+
+export function lessonToRow(l: LessonRecord, userId: string): LessonRow {
+  return {
+    user_id: userId,
+    uid: l.uid,
+    type: l.type,
+    status: l.status,
+    verse_keys: l.verseKeys,
+    xp: l.xp,
+    mistakes: l.mistakes,
+    created_at: l.createdAt,
+  }
+}
+
+/** Урок неизвестного типа (из более новой версии приложения) пропускается */
+export const isKnownLessonRow = (r: LessonRow): boolean =>
+  ['regular', 'review', 'test'].includes(r.type) && ['done', 'skipped'].includes(r.status)
+
+export function rowToLesson(r: LessonRow): LessonRecord {
+  return {
+    uid: r.uid,
+    type: r.type as LessonRecord['type'],
+    status: r.status as LessonRecord['status'],
+    verseKeys: Array.isArray(r.verse_keys) ? r.verse_keys : [],
+    xp: r.xp,
+    mistakes: r.mistakes,
     createdAt: Number(r.created_at),
     dirty: 0,
   }

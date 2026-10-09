@@ -1,9 +1,9 @@
 import { db, markSyncTx } from '../db/db'
 import { supabase } from './client'
 import {
-  attemptToRow, isKnownAttemptRow, isKnownVerseRow, maxServerTime, remoteWins, reviewToRow, rowToAttempt, rowToReview,
+  attemptToRow, isKnownAttemptRow, isKnownLessonRow, isKnownVerseRow, lessonToRow, rowToLesson, maxServerTime, remoteWins, reviewToRow, rowToAttempt, rowToReview,
   rowToText, rowToVerse, sinceIso, textToRow, verseToRow,
-  type AttemptRow, type ReviewRow, type TextRow, type VerseRow,
+  type AttemptRow, type LessonRow, type ReviewRow, type TextRow, type VerseRow,
 } from './mapping'
 import { getPullCursor, setPullCursor } from './syncMeta'
 
@@ -19,6 +19,8 @@ export interface SyncSummary {
   pushedVerses: number
   pulledReviews: number
   pushedReviews: number
+  pulledLessons: number
+  pushedLessons: number
 }
 
 function fail(error: { message: string } | null) {
@@ -26,7 +28,7 @@ function fail(error: { message: string } | null) {
 }
 
 /** Столбец, по которому однозначно упорядочиваются записи с одинаковым временем: у стихов это key, у остальных uid */
-const ORDER_COLUMN = { texts: 'uid', attempts: 'uid', reviews: 'uid', verses: 'key' } as const
+const ORDER_COLUMN = { texts: 'uid', attempts: 'uid', reviews: 'uid', lessons: 'uid', verses: 'key' } as const
 
 /** Забирает все записи таблицы, изменённые после `since`, страницами */
 async function fetchChanged<T>(table: keyof typeof ORDER_COLUMN, since: string): Promise<T[]> {
@@ -61,7 +63,7 @@ export async function syncOnce(userId: string): Promise<SyncSummary> {
   if (!supabase) throw new Error('Облако не настроено')
   const summary: SyncSummary = {
     pulledTexts: 0, pulledAttempts: 0, pushedTexts: 0, pushedAttempts: 0,
-    pulledVerses: 0, pushedVerses: 0, pulledReviews: 0, pushedReviews: 0,
+    pulledVerses: 0, pushedVerses: 0, pulledReviews: 0, pushedReviews: 0, pulledLessons: 0, pushedLessons: 0,
   }
 
   // ---------- 1. Забираем ----------
@@ -71,8 +73,9 @@ export async function syncOnce(userId: string): Promise<SyncSummary> {
   const attemptRows = await fetchChanged<AttemptRow>('attempts', since)
   const verseRows = await fetchChanged<VerseRow>('verses', since)
   const reviewRows = await fetchChanged<ReviewRow>('reviews', since)
+  const lessonRows = await fetchChanged<LessonRow>('lessons', since)
 
-  await db.transaction('rw', db.texts, db.attempts, db.verses, db.reviews, async (tx) => {
+  await db.transaction('rw', db.texts, db.attempts, db.verses, db.reviews, db.lessons, async (tx) => {
     markSyncTx(tx)
 
     for (const r of textRows) {
@@ -124,6 +127,14 @@ export async function syncOnce(userId: string): Promise<SyncSummary> {
       await db.reviews.add(rowToReview(r))
       summary.pulledReviews++
     }
+
+    // История уроков: только добавляется
+    for (const r of lessonRows) {
+      if (!isKnownLessonRow(r)) continue
+      if ((await db.lessons.where('uid').equals(r.uid).count()) > 0) continue
+      await db.lessons.add(rowToLesson(r))
+      summary.pulledLessons++
+    }
   })
 
   // ---------- 2. Отправляем ----------
@@ -166,8 +177,16 @@ export async function syncOnce(userId: string): Promise<SyncSummary> {
     fail(error)
   }
 
+  const dirtyLessons = await db.lessons.where('dirty').equals(1).toArray()
+  for (const part of chunks(dirtyLessons, CHUNK)) {
+    const { error } = await supabase
+      .from('lessons')
+      .upsert(part.map((l) => lessonToRow(l, userId)), { onConflict: 'user_id,uid', ignoreDuplicates: true })
+    fail(error)
+  }
+
   // Снимаем пометки. Если запись успели изменить во время отправки, она остаётся «грязной» до следующего раза.
-  await db.transaction('rw', db.texts, db.attempts, db.verses, db.reviews, async (tx) => {
+  await db.transaction('rw', db.texts, db.attempts, db.verses, db.reviews, db.lessons, async (tx) => {
     markSyncTx(tx)
     for (const t of dirtyTexts) {
       const cur = await db.texts.get(t.id!)
@@ -183,12 +202,14 @@ export async function syncOnce(userId: string): Promise<SyncSummary> {
       else await db.verses.update(cur.key, { dirty: 0 })
     }
     for (const r of dirtyReviews) await db.reviews.update(r.id!, { dirty: 0 })
+    for (const l of dirtyLessons) await db.lessons.update(l.id!, { dirty: 0 })
   })
   summary.pushedTexts = dirtyTexts.length
   summary.pushedAttempts = dirtyAttempts.length
   summary.pushedVerses = dirtyVerses.length
   summary.pushedReviews = dirtyReviews.length
+  summary.pushedLessons = dirtyLessons.length
 
-  setPullCursor(userId, maxServerTime([...textRows, ...attemptRows, ...verseRows, ...reviewRows], cursor))
+  setPullCursor(userId, maxServerTime([...textRows, ...attemptRows, ...verseRows, ...reviewRows, ...lessonRows], cursor))
   return summary
 }

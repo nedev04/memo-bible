@@ -5,13 +5,14 @@ import { getSyncUserId } from '../sync/syncMeta'
 import type { VerseRef } from '../bible/types'
 import { TRANSLATION, verseKey } from '../bible/refs'
 import { applyVerseResult, xpFor, type Tier } from '../logic/mastery'
-import type { Attempt, TextItem, VerseReview, VerseState } from '../types'
+import type { Attempt, LessonRecord, LessonType, TextItem, VerseReview, VerseState } from '../types'
 
 class AppDB extends Dexie {
   texts!: Table<TextItem, number>
   attempts!: Table<Attempt, number>
   verses!: Table<VerseState, string>
   reviews!: Table<VerseReview, number>
+  lessons!: Table<LessonRecord, number>
 
   constructor() {
     super('memorize-by-heart')
@@ -64,6 +65,10 @@ class AppDB extends Dexie {
           v.lapses ??= 0
         }),
       )
+    // v5: история уроков (путь на главной)
+    this.version(5).stores({
+      lessons: '++id, uid, createdAt, dirty',
+    })
   }
 }
 
@@ -119,6 +124,13 @@ db.reviews.hook('creating', (_key, obj, tx) => {
   notifyChanged()
 })
 
+db.lessons.hook('creating', (_key, obj, tx) => {
+  if (isSyncTx(tx)) return
+  obj.uid ||= uuid()
+  obj.dirty = 1
+  notifyChanged()
+})
+
 // ---------- Запросы ----------
 
 /** Тексты без удалённых (удалённые некоторое время хранятся как «надгробия» до отправки в облако) */
@@ -155,6 +167,7 @@ async function removeEverythingInTx() {
     await db.verses.clear()
     await db.reviews.clear()
   }
+  await db.lessons.clear()
 }
 
 export async function exportAll(): Promise<{ texts: TextItem[]; attempts: Attempt[]; verses: VerseState[] }> {
@@ -195,16 +208,17 @@ export async function importBackup(data: BackupData, mode: 'replace' | 'merge') 
 
 /** Удалить все данные. Для синхронизируемого устройства удаление дойдёт и до облака. */
 export async function clearAll() {
-  await db.transaction('rw', db.texts, db.attempts, db.verses, db.reviews, removeEverythingInTx)
+  await db.transaction('rw', db.texts, db.attempts, db.verses, db.reviews, db.lessons, removeEverythingInTx)
 }
 
 /** Стереть всё локально, не затрагивая облако (при смене аккаунта на устройстве) */
 export async function wipeLocal() {
-  await db.transaction('rw', db.texts, db.attempts, db.verses, db.reviews, async () => {
+  await db.transaction('rw', db.texts, db.attempts, db.verses, db.reviews, db.lessons, async () => {
     await db.attempts.clear()
     await db.texts.clear()
     await db.verses.clear()
     await db.reviews.clear()
+    await db.lessons.clear()
   })
 }
 
@@ -270,4 +284,19 @@ export async function recordVerseResult(
     })
     return { change, xp, strength: updated.strength }
   })
+}
+
+// ---------- Уроки ----------
+
+/** Пройденные и пропущенные уроки по порядку */
+export const liveLessons = () => db.lessons.orderBy('createdAt').toArray()
+
+export async function saveLesson(input: {
+  type: LessonType
+  status: 'done' | 'skipped'
+  verseKeys: string[]
+  xp: number
+  mistakes: number
+}) {
+  await db.lessons.add({ uid: uuid(), ...input, createdAt: Date.now() })
 }

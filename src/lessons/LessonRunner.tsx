@@ -1,4 +1,4 @@
-import { useState, type ComponentType } from 'react'
+import { useEffect, useRef, useState, type ComponentType } from 'react'
 import ProgressBar from '../components/ProgressBar'
 import { PASS_SCORE, PARTIAL_SCORE } from '../logic/config'
 import AssembleWords from './exercises/AssembleWords'
@@ -6,7 +6,9 @@ import FillGapsVerse from './exercises/FillGapsVerse'
 import OrderParts from './exercises/OrderParts'
 import PartialVerse from './exercises/PartialVerse'
 import RevealVerse from './exercises/RevealVerse'
+import TypeVerses from './exercises/TypeVerses'
 import WhereWritten from './exercises/WhereWritten'
+import type { LessonType } from '../types'
 import { KIND_SHOWS_REF, KIND_TITLE, type ExerciseKind, type LessonStep, type StepOutcome, type StepProps, type StepResult, type VerseText } from './types'
 
 const COMPONENTS: Record<ExerciseKind, ComponentType<StepProps>> = {
@@ -16,6 +18,7 @@ const COMPONENTS: Record<ExerciseKind, ComponentType<StepProps>> = {
   assemble: AssembleWords,
   whereWritten: WhereWritten,
   orderParts: OrderParts,
+  typing: TypeVerses,
 }
 
 /** «Матфея 5:7–9» для нескольких подряд идущих стихов */
@@ -27,7 +30,15 @@ function stepRef(verses: VerseText[]): string {
   return `${name} ${first.chapter}:${first.verse}–${last.verse}`
 }
 
+export interface LessonSummary {
+  xp: number
+  mistakes: number
+  /** Стихи урока */
+  keys: string[]
+}
+
 interface Props {
+  type: LessonType
   steps: LessonStep[]
   texts: Map<string, VerseText>
   /** Сохраняет результат (сила стиха, журнал) и возвращает полученный опыт */
@@ -36,9 +47,11 @@ interface Props {
   onClose: () => void
   /** Начать следующий урок */
   onAnother: () => void
+  /** Урок завершён (вызывается один раз) */
+  onFinish?: (summary: LessonSummary) => void
 }
 
-export default function LessonRunner({ steps, texts, record, onClose, onAnother }: Props) {
+export default function LessonRunner({ type, steps, texts, record, onClose, onAnother, onFinish }: Props) {
   const [queue, setQueue] = useState<LessonStep[]>(steps)
   const [index, setIndex] = useState(0)
   const [result, setResult] = useState<StepResult | null>(null)
@@ -49,6 +62,13 @@ export default function LessonRunner({ steps, texts, record, onClose, onAnother 
   const [busy, setBusy] = useState(false)
 
   const step = queue[index]
+  const finishedOnce = useRef(false)
+
+  useEffect(() => {
+    if (!done || finishedOnce.current) return
+    finishedOnce.current = true
+    onFinish?.({ xp, mistakes, keys: [...new Set(steps.flatMap((s) => s.verseKeys))] })
+  }, [done]) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function onAnswer(r: StepResult) {
     if (result || busy || done) return
@@ -69,8 +89,8 @@ export default function LessonRunner({ steps, texts, record, onClose, onAnother 
       return
     }
     setResult(r)
-    // Ошибка: то же упражнение будет ещё раз в конце урока (один раз)
-    if (r.score < PASS_SCORE && !step.retry) {
+    // Ошибка: то же упражнение будет ещё раз в конце урока (один раз). В тесте повторов нет.
+    if (r.score < PASS_SCORE && !step.retry && type !== 'test') {
       setMistakes((m) => m + 1)
       setQueue((q) => [...q, { ...step, id: `${step.id}:retry`, retry: true }])
     }
@@ -90,7 +110,7 @@ export default function LessonRunner({ steps, texts, record, onClose, onAnother 
     const list = [...changes.entries()]
     return (
       <div className="result lesson-done">
-        <h1>Урок пройден</h1>
+        <h1>{type === 'test' ? 'Тест пройден' : 'Урок пройден'}</h1>
         <p className="xp">+{xp} опыта</p>
         <p className="muted-block">{mistakes === 0 ? 'Без ошибок.' : `Ошибок: ${mistakes}.`}</p>
         {list.length > 0 && (
@@ -120,7 +140,7 @@ export default function LessonRunner({ steps, texts, record, onClose, onAnother 
     <div className={result ? 'lesson has-feedback' : 'lesson'}>
       <div className="lesson-top">
         <button className="lesson-close" onClick={close} aria-label="Выйти из урока">✕</button>
-        <ProgressBar value={finished} max={total} />
+        {type !== 'test' && <ProgressBar value={finished} max={total} />}
       </div>
 
       <h1 className="lesson-title">
@@ -138,7 +158,7 @@ export default function LessonRunner({ steps, texts, record, onClose, onAnother 
             {result.score >= PASS_SCORE ? 'Верно!' : result.score >= PARTIAL_SCORE ? 'Почти верно' : 'Есть ошибки'}
           </strong>
           {result.detail && <span>{result.detail}</span>}
-          {result.score < PASS_SCORE && !step.retry && <small>Это упражнение повторится в конце урока.</small>}
+          {result.score < PASS_SCORE && !step.retry && type !== 'test' && <small>Это упражнение повторится в конце урока.</small>}
           <button className="btn primary" autoFocus onClick={() => advance()}>Продолжить</button>
         </div>
       )}

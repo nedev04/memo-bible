@@ -1,15 +1,18 @@
-import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useEffect, useRef, useState } from 'react'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { loadBook } from '../bible/bible'
 import { formatRange, parseKey, TRANSLATION } from '../bible/refs'
-import { liveVerses, recordVerseResult } from '../db/db'
-import { planLesson } from '../lessons/generator'
-import LessonRunner from '../lessons/LessonRunner'
+import { liveLessons, liveVerses, recordVerseResult, saveLesson } from '../db/db'
+import { patternType, planOfType, resolveType } from '../lessons/generator'
+import LessonRunner, { type LessonSummary } from '../lessons/LessonRunner'
 import { stepTier, type LessonStep, type StepOutcome, type StepResult, type VerseText } from '../lessons/types'
+import type { LessonType } from '../types'
 
 interface Loaded {
+  type: LessonType
   steps: LessonStep[]
   texts: Map<string, VerseText>
+  replay: boolean
 }
 
 /** Подгружает тексты стихов (и главы целиком, из неё берутся неверные варианты ответа) */
@@ -36,26 +39,42 @@ async function loadTexts(keys: string[]): Promise<Map<string, VerseText>> {
 
 export default function LessonPage() {
   const navigate = useNavigate()
+  const [params] = useSearchParams()
+  const replayUid = params.get('replay')
   const [round, setRound] = useState(0)
   const [state, setState] = useState<'loading' | 'empty' | 'error' | Loaded>('loading')
+  const saving = useRef<Promise<void>>(Promise.resolve())
 
   useEffect(() => {
     let alive = true
     setState('loading')
     ;(async () => {
       try {
-        const verses = await liveVerses()
-        const steps = planLesson(verses, Date.now())
+        const [verses, lessons] = await Promise.all([liveVerses(), liveLessons()])
+        const now = Date.now()
+        let type: LessonType | null
+        let only: Set<string> | undefined
+        if (replayUid) {
+          const l = lessons.find((x) => x.uid === replayUid)
+          if (!l || l.verseKeys.length === 0) return alive && setState('empty')
+          type = l.type
+          only = new Set(l.verseKeys)
+        } else {
+          type = resolveType(patternType(lessons.length), verses, now)
+        }
+        if (!type) return alive && setState('empty')
+
+        const steps = planOfType(type, verses, now, Math.random, only)
         if (steps.length === 0) return alive && setState('empty')
         const texts = await loadTexts([...new Set(steps.flatMap((s) => s.verseKeys))])
         const playable = steps.filter((s) => s.verseKeys.every((k) => texts.has(k)))
-        if (alive) setState(playable.length === 0 ? 'error' : { steps: playable, texts })
+        if (alive) setState(playable.length === 0 ? 'error' : { type, steps: playable, texts, replay: !!replayUid })
       } catch {
         if (alive) setState('error')
       }
     })()
     return () => { alive = false }
-  }, [round])
+  }, [round, replayUid])
 
   async function record(step: LessonStep, result: StepResult): Promise<StepOutcome> {
     const tier = stepTier(step)
@@ -63,11 +82,23 @@ export default function LessonPage() {
     let xp = 0
     const changes: StepOutcome['changes'] = []
     for (const key of step.verseKeys) {
-      const r = await recordVerseResult(key, { exercise: step.kind, tier, score: result.score })
+      const score = result.perVerse?.[key] ?? result.score
+      const r = await recordVerseResult(key, { exercise: step.kind, tier, score })
       xp += r.xp
       changes.push({ key, change: r.change })
     }
     return { xp, changes }
+  }
+
+  function onFinish(summary: LessonSummary) {
+    if (state === 'loading' || state === 'empty' || state === 'error' || state.replay) return // повтор в путь не записывается
+    saving.current = saveLesson({ type: state.type, status: 'done', verseKeys: summary.keys, xp: summary.xp, mistakes: summary.mistakes })
+  }
+
+  async function another() {
+    await saving.current
+    if (replayUid) navigate('/lesson', { replace: true })
+    else setRound((r) => r + 1)
   }
 
   if (state === 'loading') return <p className="muted-block">Готовим урок…</p>
@@ -75,8 +106,15 @@ export default function LessonPage() {
     return (
       <>
         <h1>Урок</h1>
-        <p className="empty">Сначала добавьте стихи, которые хотите учить.</p>
-        <button className="btn primary" onClick={() => navigate('/add')}>Добавить стихи</button>
+        <p className="empty">
+          {replayUid
+            ? 'Для этого урока не нашлось подходящих стихов: возможно, они удалены из списка.'
+            : 'Сначала добавьте стихи, которые хотите учить.'}
+        </p>
+        <div className="row">
+          <button className="btn primary" onClick={() => navigate('/add')}>Добавить стихи</button>
+          <Link className="btn ghost" to="/">На главную</Link>
+        </div>
       </>
     )
   }
@@ -92,12 +130,14 @@ export default function LessonPage() {
 
   return (
     <LessonRunner
-      key={round}
+      key={`${round}:${replayUid ?? ''}`}
+      type={state.type}
       steps={state.steps}
       texts={state.texts}
       record={record}
-      onClose={() => navigate('/verses')}
-      onAnother={() => setRound((r) => r + 1)}
+      onClose={() => navigate('/')}
+      onAnother={another}
+      onFinish={onFinish}
     />
   )
 }

@@ -1,6 +1,8 @@
 import type { Tier } from '../logic/mastery'
 
-export type ExerciseKind = 'reveal' | 'partial' | 'fillGaps' | 'assemble' | 'whereWritten' | 'orderParts'
+export type ExerciseKind = 'reveal' | 'partial' | 'fillGaps' | 'assemble' | 'whereWritten' | 'orderParts' | 'typing'
+
+export type { LessonType } from '../types'
 
 export const KIND_TITLE: Record<ExerciseKind, string> = {
   reveal: 'Откройте стих по частям',
@@ -9,11 +11,12 @@ export const KIND_TITLE: Record<ExerciseKind, string> = {
   assemble: 'Соберите стих в правильном порядке',
   whereWritten: 'Где это написано?',
   orderParts: 'Расставьте части по порядку',
+  typing: 'Введите по памяти',
 }
 
 /** В заголовке упражнения нельзя показывать ссылку, если она и есть ответ */
 export const KIND_SHOWS_REF: Record<ExerciseKind, boolean> = {
-  reveal: true, partial: true, fillGaps: true, assemble: true, whereWritten: false, orderParts: true,
+  reveal: true, partial: true, fillGaps: true, assemble: true, whereWritten: false, orderParts: true, typing: true,
 }
 
 /**
@@ -33,6 +36,8 @@ export function stepTier(step: LessonStep): Tier | null {
       return (step.settings.pieces ?? 6) <= 4 ? 1 : 2
     case 'orderParts':
       return 2
+    case 'typing':
+      return 3
   }
 }
 
@@ -85,6 +90,8 @@ export interface StepResult {
   neutral?: boolean
   /** Пояснение под оценкой, например правильный ответ */
   detail?: string
+  /** Если в шаге несколько стихов, у каждого может быть свой результат (ключ стиха → точность) */
+  perVerse?: Record<string, number>
 }
 
 export interface StepOutcome {
