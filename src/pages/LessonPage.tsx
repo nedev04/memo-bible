@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { loadBook } from '../bible/bible'
 import { formatRange, parseKey, TRANSLATION } from '../bible/refs'
-import { liveLessons, liveVerses, recordVerseResult, saveLesson } from '../db/db'
+import { liveLessons, liveVerses, recentWhereBooks, recordVerseResult, saveLesson } from '../db/db'
 import { patternType, planOfType, resolveType } from '../lessons/generator'
 import LessonRunner, { type LessonSummary } from '../lessons/LessonRunner'
 import { stepTier, type LessonStep, type StepOutcome, type StepResult, type VerseText } from '../lessons/types'
@@ -50,7 +50,7 @@ export default function LessonPage() {
     setState('loading')
     ;(async () => {
       try {
-        const [verses, lessons] = await Promise.all([liveVerses(), liveLessons()])
+        const [verses, lessons, recentWhere] = await Promise.all([liveVerses(), liveLessons(), recentWhereBooks()])
         const now = Date.now()
         let type: LessonType | null
         let only: Set<string> | undefined
@@ -64,7 +64,7 @@ export default function LessonPage() {
         }
         if (!type) return alive && setState('empty')
 
-        const steps = planOfType(type, verses, now, Math.random, only)
+        const steps = planOfType(type, verses, now, Math.random, only, { recentWhere })
         if (steps.length === 0) return alive && setState('empty')
         const texts = await loadTexts([...new Set(steps.flatMap((s) => s.verseKeys))])
         const playable = steps.filter((s) => s.verseKeys.every((k) => texts.has(k)))

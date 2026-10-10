@@ -11,13 +11,15 @@ interface Props {
   slotHint?: (word: FlatWord, index: number) => string | undefined
   /** Показывать «…» в строках, где часть слов ещё скрыта */
   ellipsis?: boolean
+  /** Скрытые слова показывать «пробелами» той же ширины (подсказка, где стоят слова) */
+  maskHidden?: boolean
 }
 
 /**
  * Текст, в котором слова появляются по мере ввода. Введённые слова выводятся вместе со знаками
  * препинания, ошибочные подсвечиваются. Невидимое поле ввода стоит на текущем слове.
  */
-export default function TypedText({ typer, placeholder, slotHint, ellipsis }: Props) {
+export default function TypedText({ typer, placeholder, slotHint, ellipsis, maskHidden }: Props) {
   const { words, given, lines, pos, typed, bad, done, inputRef } = typer
   const boxRef = useRef<HTMLDivElement>(null)
 
@@ -68,6 +70,8 @@ export default function TypedText({ typer, placeholder, slotHint, ellipsis }: Pr
                 </span>,
                 ' ',
               )
+            } else if (maskHidden) {
+              parts.push(<span key={i} className="masked" aria-hidden="true">{words[i].raw}</span>, ' ')
             } else {
               hidden++
             }

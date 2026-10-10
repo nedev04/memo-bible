@@ -3,7 +3,12 @@ import { firstChar, flattenWords, normalize, visibleMask } from '../logic/exerci
 import type { ExerciseProps } from './types'
 import WordFlow from './WordFlow'
 
-export default function FirstLetters({ content, difficulty, onComplete }: ExerciseProps) {
+type Props = ExerciseProps & {
+  /** Внутри урока: по окончании сразу сообщает результат, без своей кнопки «Готово» */
+  embedded?: boolean
+}
+
+export default function FirstLetters({ content, difficulty, onComplete, embedded }: Props) {
   const words = useMemo(() => flattenWords(content), [content])
   const visible = useMemo(() => visibleMask(words, difficulty), [words, difficulty])
   const letters = useMemo(() => words.map(firstChar), [words])
@@ -66,6 +71,14 @@ export default function FirstLetters({ content, difficulty, onComplete }: Exerci
   }
 
   const score = total === 0 ? 100 : Math.round(((total - mistakes.size) / total) * 100)
+  const reported = useRef(false)
+
+  useEffect(() => {
+    if (embedded && done && !reported.current) {
+      reported.current = true
+      onComplete(score)
+    }
+  }, [embedded, done]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="exwrap" onClick={focusInput}>
@@ -103,6 +116,7 @@ export default function FirstLetters({ content, difficulty, onComplete }: Exerci
         />
       </div>
 
+      {!(embedded && done) && (
       <div className="reveal-bar" onClick={(e) => e.stopPropagation()}>
         {done ? (
           <>
@@ -116,6 +130,7 @@ export default function FirstLetters({ content, difficulty, onComplete }: Exerci
           </>
         )}
       </div>
+      )}
     </div>
   )
 }

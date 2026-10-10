@@ -1,6 +1,6 @@
 import type { Tier } from '../logic/mastery'
 
-export type ExerciseKind = 'reveal' | 'partial' | 'fillGaps' | 'assemble' | 'whereWritten' | 'orderParts' | 'typing'
+export type ExerciseKind = 'reveal' | 'partial' | 'fillGaps' | 'assemble' | 'whereWritten' | 'orderParts' | 'typing' | 'firstLetters'
 
 export type { LessonType } from '../types'
 
@@ -12,11 +12,12 @@ export const KIND_TITLE: Record<ExerciseKind, string> = {
   whereWritten: 'Где это написано?',
   orderParts: 'Расставьте части по порядку',
   typing: 'Введите по памяти',
+  firstLetters: 'Введите первые буквы слов',
 }
 
 /** В заголовке упражнения нельзя показывать ссылку, если она и есть ответ */
 export const KIND_SHOWS_REF: Record<ExerciseKind, boolean> = {
-  reveal: true, partial: true, fillGaps: true, assemble: true, whereWritten: false, orderParts: true, typing: true,
+  reveal: true, partial: true, fillGaps: true, assemble: true, whereWritten: false, orderParts: true, typing: true, firstLetters: true,
 }
 
 /**
@@ -37,7 +38,11 @@ export function stepTier(step: LessonStep): Tier | null {
     case 'orderParts':
       return 2
     case 'typing':
-      return 3
+      // Ввод по памяти с чистого листа — вспоминание без подсказок; если часть слов показана, это вспоминание с опорой
+      return (step.settings.visiblePct ?? 0) > 0 ? 2 : 3
+    case 'firstLetters':
+      // Слова видны целиком — узнавание; видны частично или не видны — вспоминание с опорой
+      return (step.settings.hintLevel ?? 1) <= 1 ? 1 : 2
   }
 }
 
@@ -56,6 +61,10 @@ export interface StepSettings {
   pieces?: number
   /** Сколько вопросов «где написано»: 1 — книга, 2 — и глава, 3 — и стих */
   levels?: 1 | 2 | 3
+  /** Первые буквы: 1 — слова видны, 2 — видны не все, 3 — видны только пробелы */
+  hintLevel?: 1 | 2 | 3
+  /** Ввод по памяти: сколько процентов слов уже стоит на месте (0 — чистый лист) */
+  visiblePct?: number
 }
 
 export interface LessonStep {

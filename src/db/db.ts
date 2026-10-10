@@ -3,7 +3,7 @@ import { uuid } from '../lib/uuid'
 import type { BackupData } from '../logic/backup'
 import { getSyncUserId } from '../sync/syncMeta'
 import type { VerseRef } from '../bible/types'
-import { TRANSLATION, verseKey } from '../bible/refs'
+import { parseKey, TRANSLATION, verseKey } from '../bible/refs'
 import { applyVerseResult, xpFor, type Tier } from '../logic/mastery'
 import type { Attempt, LessonRecord, LessonType, TextItem, VerseReview, VerseState } from '../types'
 
@@ -307,4 +307,15 @@ export async function saveLesson(input: {
   mistakes: number
 }) {
   await db.lessons.add({ uid: uuid(), ...input, createdAt: Date.now() })
+}
+
+/** Книги последних вопросов «где написано» (самые свежие первыми): по ним решается, не надоел ли вопрос */
+export async function recentWhereBooks(limit = 10): Promise<string[]> {
+  const rows = await db.reviews
+    .orderBy('createdAt')
+    .reverse()
+    .filter((r) => r.exercise === 'whereWritten')
+    .limit(limit)
+    .toArray()
+  return rows.map((r) => parseKey(r.verseKey)?.book).filter((b): b is string => !!b)
 }

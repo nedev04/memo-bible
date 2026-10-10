@@ -3,6 +3,7 @@ import ProgressBar from '../components/ProgressBar'
 import { PASS_SCORE, PARTIAL_SCORE } from '../logic/config'
 import AssembleWords from './exercises/AssembleWords'
 import FillGapsVerse from './exercises/FillGapsVerse'
+import FirstLettersVerse from './exercises/FirstLettersVerse'
 import OrderParts from './exercises/OrderParts'
 import PartialVerse from './exercises/PartialVerse'
 import RevealVerse from './exercises/RevealVerse'
@@ -19,6 +20,7 @@ const COMPONENTS: Record<ExerciseKind, ComponentType<StepProps>> = {
   whereWritten: WhereWritten,
   orderParts: OrderParts,
   typing: TypeVerses,
+  firstLetters: FirstLettersVerse,
 }
 
 /** «Матфея 5:7–9» для нескольких подряд идущих стихов */

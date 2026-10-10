@@ -1,4 +1,4 @@
-import type { FlatWord, Rng } from '../logic/exercises'
+import { shuffle, type FlatWord, type Rng } from '../logic/exercises'
 
 /** Случайные «ранги» слов и букв. Они фиксируются один раз, поэтому при движении ползунков скрытое меняется плавно. */
 export interface MaskRanks {
@@ -51,4 +51,16 @@ export function applySliderMask(
     const hide = new Set([...inner].sort((a, b) => ranks.letters[i][a] - ranks.letters[i][b]).slice(0, n))
     return chars.map((c, k) => (hide.has(k) ? '_' : c)).join('')
   })
+}
+
+/**
+ * Какие слова показать заранее при вводе по памяти: pct процентов слов с буквами выбираются случайно.
+ * Слова без букв (тире и т.п.) всегда показаны. Результат: true — слово уже стоит на месте.
+ */
+export function pickVisibleWords(words: FlatWord[], pct: number, rng: Rng = Math.random): boolean[] {
+  const eligible = words.map((_, i) => i).filter((i) => isLetter(words[i].core[0] ?? '') || /[\p{L}\p{N}]/u.test(words[i].core))
+  const eligibleSet = new Set(eligible)
+  const show = Math.round((eligible.length * Math.max(0, Math.min(100, pct))) / 100)
+  const chosen = new Set(shuffle(eligible, rng).slice(0, show))
+  return words.map((_, i) => chosen.has(i) || !eligibleSet.has(i))
 }

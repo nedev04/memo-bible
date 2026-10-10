@@ -397,3 +397,13 @@ input[type="file"] { max-width: 100%; color: var(--ink); }
 .path-detail p { margin: 0; color: var(--muted); font-size: 0.95rem; }
 .path-detail .btn { width: 100%; }
 .path-note { text-align: center; max-width: 18rem; margin-top: 1rem; }
+
+/* Список «Мои стихи» */
+.filters { margin: 0.8rem 0 0.2rem; }
+.chip.active { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.row-head { display: flex; align-items: baseline; gap: 0.6rem; flex-wrap: wrap; }
+.level-badge { font-size: 0.75rem; font-weight: 600; padding: 0.1rem 0.5rem; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); }
+.level-badge.strong { color: var(--good); border-color: var(--good); }
+.level-badge.medium { color: var(--ink); border-color: var(--mark); background: color-mix(in srgb, var(--mark) 30%, transparent); }
+.level-badge.started { color: var(--accent); border-color: var(--accent); }
+.dots { letter-spacing: 1px; color: var(--accent); }
