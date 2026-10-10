@@ -114,3 +114,53 @@ describe('правки источника', () => {
     expect(applyFixups('gen', src).chapters).toBe(src)
   })
 })
+
+describe('Псалтирь: синодальная нумерация', () => {
+  // Еврейская нумерация: у каждого псалма по 3 стиха, кроме особых
+  const size = (n) => ({ 9: 21, 10: 18, 114: 8, 115: 18, 116: 19, 147: 20 })[n] ?? 3
+  const hebrew = Array.from({ length: 150 }, (_, i) => {
+    const n = i + 1
+    return Array.from({ length: size(n) }, (_, v) => `h${n}_${v + 1}`)
+  })
+  // Как в источнике: стихи еврейского 10-го псалма снабжены ссылками (9:22)–(9:39)
+  hebrew[9] = hebrew[9].map((t, v) => `(9:${22 + v}) ${t}`)
+
+  it('объединяет и разделяет псалмы, сдвигает остальные', () => {
+    const { chapters, notes, warnings } = applyFixups('psa', hebrew)
+    expect(chapters).toHaveLength(150)
+    expect(chapters[8]).toHaveLength(39) // 9 = еврейские 9 и 10
+    expect(chapters[8][20]).toBe('h9_21')
+    expect(chapters[8][21]).toBe('h10_1') // ссылка в скобках убрана
+    expect(chapters[8][38]).toBe('h10_18')
+    expect(chapters[9][0]).toBe('h11_1') // 10 = еврейский 11
+    expect(chapters[111][0]).toBe('h113_1') // 112 = еврейский 113
+    expect(chapters[112]).toHaveLength(26) // 113 = еврейские 114 и 115
+    expect(chapters[112][8]).toBe('h115_1')
+    expect(chapters[113]).toHaveLength(9) // 114 = еврейский 116:1–9
+    expect(chapters[114]).toHaveLength(10) // 115 = еврейский 116:10–19
+    expect(chapters[114][0]).toBe('h116_10')
+    expect(chapters[115][0]).toBe('h117_1') // 116 = еврейский 117
+    expect(chapters[144][0]).toBe('h146_1') // 145 = еврейский 146
+    expect(chapters[145]).toHaveLength(11) // 146 = еврейский 147:1–11
+    expect(chapters[146]).toHaveLength(9) // 147 = еврейский 147:12–20
+    expect(chapters[146][0]).toBe('h147_12')
+    expect(chapters[149][0]).toBe('h150_1')
+    expect(chapters.flat().length).toBe(hebrew.flat().length) // стихов столько же
+    expect(chapters.flat().some((t) => /^\(\d+:\d+\)/.test(t))).toBe(false)
+    expect(notes).toHaveLength(1)
+    expect(warnings).toEqual([])
+  })
+
+  it('при неожиданном числе стихов ничего не меняет и предупреждает', () => {
+    const odd = hebrew.map((c, i) => (i === 8 ? c.slice(0, 5) : c))
+    const result = applyFixups('psa', odd)
+    expect(result.chapters).toBe(odd)
+    expect(result.warnings).toHaveLength(1)
+  })
+
+  it('ссылки, не совпавшие с новым положением, попадают в предупреждения', () => {
+    const wrong = hebrew.map((c, i) => (i === 10 ? c.map((t) => `(99:1) ${t}`) : c))
+    const { warnings } = applyFixups('psa', wrong)
+    expect(warnings).toHaveLength(1)
+  })
+})

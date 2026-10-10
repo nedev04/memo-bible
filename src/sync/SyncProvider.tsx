@@ -3,12 +3,15 @@ import type { Session } from '@supabase/supabase-js'
 import { countLiveTexts, wipeLocal } from '../db/db'
 import { cloudConfigured, supabase } from './client'
 import { syncOnce } from './sync'
+import { displayNameOf, validateName } from './profile'
 import { getLastSyncAt, getSyncUserId, resetSyncState, setLastSyncAt, setSyncUserId } from './syncMeta'
 
 export type SyncStatus = 'idle' | 'syncing' | 'error' | 'offline'
 export interface SyncUser {
   id: string
   email: string
+  /** Имя для показа */
+  name: string
 }
 
 interface SyncContext {
@@ -22,7 +25,9 @@ interface SyncContext {
   syncNow: () => Promise<void>
   /** Возвращают текст ошибки или сообщение для пользователя; null — всё хорошо */
   signIn: (email: string, password: string) => Promise<{ error?: string; info?: string }>
-  signUp: (email: string, password: string) => Promise<{ error?: string; info?: string }>
+  signUp: (email: string, password: string, name: string) => Promise<{ error?: string; info?: string }>
+  /** Сменить имя */
+  updateName: (name: string) => Promise<{ error?: string }>
   signOut: () => Promise<void>
 }
 
@@ -107,7 +112,13 @@ export function SyncProvider({ children }: { children: ReactNode }) {
 
   async function applyNow(session: Session | null) {
     if (!supabase) return
-    const u: SyncUser | null = session?.user ? { id: session.user.id, email: session.user.email ?? '' } : null
+    const u: SyncUser | null = session?.user
+      ? {
+          id: session.user.id,
+          email: session.user.email ?? '',
+          name: displayNameOf(session.user.user_metadata, session.user.email),
+        }
+      : null
     if (u) {
       const prev = getSyncUserId()
       if (prev && prev !== u.id && (await countLiveTexts()) > 0) {
@@ -179,14 +190,28 @@ export function SyncProvider({ children }: { children: ReactNode }) {
     return error ? { error: authMessage(error.message) } : {}
   }, [])
 
-  const signUp = useCallback(async (email: string, password: string) => {
+  const signUp = useCallback(async (email: string, password: string, name: string) => {
     if (!supabase) return { error: 'Облако не настроено.' }
-    const { data, error } = await supabase.auth.signUp({ email: email.trim(), password })
+    const checked = validateName(name)
+    if (!checked.ok) return { error: checked.error }
+    const { data, error } = await supabase.auth.signUp({
+      email: email.trim(),
+      password,
+      options: { data: { display_name: checked.name } },
+    })
     if (error) return { error: authMessage(error.message) }
     if (!data.session) {
       return { info: 'Аккаунт создан. Подтвердите почту по ссылке из письма, затем войдите.' }
     }
     return {}
+  }, [])
+
+  const updateName = useCallback(async (name: string) => {
+    if (!supabase) return { error: 'Облако не настроено.' }
+    const checked = validateName(name)
+    if (!checked.ok) return { error: checked.error }
+    const { error } = await supabase.auth.updateUser({ data: { display_name: checked.name } })
+    return error ? { error: authMessage(error.message) } : {}
   }, [])
 
   const signOut = useCallback(async () => {
@@ -197,9 +222,9 @@ export function SyncProvider({ children }: { children: ReactNode }) {
   const value = useMemo<SyncContext>(
     () => ({
       configured: cloudConfigured, ready, user, status, lastSyncAt, error,
-      syncNow: runSync, signIn, signUp, signOut,
+      syncNow: runSync, signIn, signUp, updateName, signOut,
     }),
-    [ready, user, status, lastSyncAt, error, runSync, signIn, signUp, signOut],
+    [ready, user, status, lastSyncAt, error, runSync, signIn, signUp, updateName, signOut],
   )
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>

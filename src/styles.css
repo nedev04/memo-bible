@@ -407,3 +407,14 @@ input[type="file"] { max-width: 100%; color: var(--ink); }
 .level-badge.medium { color: var(--ink); border-color: var(--mark); background: color-mix(in srgb, var(--mark) 30%, transparent); }
 .level-badge.started { color: var(--accent); border-color: var(--accent); }
 .dots { letter-spacing: 1px; color: var(--accent); }
+
+/* Профиль */
+.profile { display: flex; gap: 1rem; align-items: flex-start; padding: 0.4rem 0 0.8rem; }
+.avatar {
+  flex: none; width: 3.6rem; height: 3.6rem; border-radius: 50%; display: grid; place-items: center;
+  background: var(--accent); color: var(--accent-ink); font-family: var(--font-text); font-size: 1.6rem; font-weight: 700;
+}
+.profile-name { display: block; font-size: 1.2rem; }
+.profile .btn.small { margin-top: 0.5rem; }
+.field.compact { margin-bottom: 0.6rem; }
+.mode-tabs { margin-bottom: 1rem; }

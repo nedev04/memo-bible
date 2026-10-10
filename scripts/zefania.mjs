@@ -127,6 +127,61 @@ export const FIXUPS = {
     return { chapters: out, notes, warnings: [] }
   },
 
+  // Псалтирь: в источнике еврейская нумерация, а в Синодальном издании славянская (как в Септуагинте).
+  // Псалмы 9 и 10 здесь объединены в 9-й, 114 и 115 в 113-й, 116-й разделён на 114-й и 115-й, 147-й на 146-й и 147-й,
+  // а остальные с 11-го по 146-й сдвинуты на единицу. Ссылки в скобках перед стихами, например «(9:22)», убираются.
+  psa(ch) {
+    const PREFIX = /^\((\d+):(\d+)\)\s*/
+    const expected = { 9: 21, 10: 18, 114: 8, 115: 18, 116: 19, 147: 20 }
+    if (ch.length !== 150) {
+      return { chapters: ch, notes: [], warnings: [`Псалтирь: глав ${ch.length}, ожидалось 150, нумерация не изменена`] }
+    }
+    const bad = Object.entries(expected).filter(([n, len]) => ch[Number(n) - 1].length !== len)
+    if (bad.length > 0) {
+      const list = bad.map(([n, len]) => `пс. ${n}: ${ch[Number(n) - 1].length} вместо ${len}`).join('; ')
+      return { chapters: ch, notes: [], warnings: [`Псалтирь: неожиданное число стихов (${list}), нумерация не изменена`] }
+    }
+
+    // H[i] — псалом i+1 по еврейской нумерации; ссылки в скобках отделяются от текста
+    const H = ch.map((c) =>
+      c.map((raw) => {
+        const m = raw.match(PREFIX)
+        return { text: m ? raw.replace(PREFIX, '') : raw, ref: m ? [Number(m[1]), Number(m[2])] : null }
+      }),
+    )
+    const out = []
+    for (let i = 0; i < 8; i++) out.push(H[i]) //          1–8 без изменений
+    out.push([...H[8], ...H[9]]) //                        9 = еврейские 9 и 10
+    for (let i = 10; i <= 112; i++) out.push(H[i]) //      10–112 = еврейские 11–113
+    out.push([...H[113], ...H[114]]) //                    113 = еврейские 114 и 115
+    out.push(H[115].slice(0, 9)) //                        114 = еврейский 116:1–9
+    out.push(H[115].slice(9)) //                           115 = еврейский 116:10–19
+    for (let i = 116; i <= 145; i++) out.push(H[i]) //     116–145 = еврейские 117–146
+    out.push(H[146].slice(0, 11)) //                       146 = еврейский 147:1–11
+    out.push(H[146].slice(11)) //                          147 = еврейский 147:12–20
+    out.push(H[147], H[148], H[149]) //                    148–150 без изменений
+
+    // Если у стихов были ссылки в скобках, они должны совпасть с новым положением стиха
+    let stripped = 0
+    let mismatches = 0
+    let example = ''
+    out.forEach((c, ci) =>
+      c.forEach((v, vi) => {
+        if (!v.ref) return
+        stripped++
+        if (v.ref[0] !== ci + 1 || v.ref[1] !== vi + 1) {
+          mismatches++
+          if (!example) example = `ссылка ${v.ref[0]}:${v.ref[1]} стоит на месте ${ci + 1}:${vi + 1}`
+        }
+      }),
+    )
+    return {
+      chapters: out.map((c) => c.map((v) => v.text)),
+      notes: [`Псалтирь: нумерация приведена к Синодальной (150 псалмов); убрано ссылок в скобках перед стихами: ${stripped}.`],
+      warnings: mismatches > 0 ? [`Псалтирь: ссылок в скобках, не совпавших с новым положением: ${mismatches} (например, ${example})`] : [],
+    }
+  },
+
   // В файле еврейское деление: 4 главы вместо 3 (еврейские 3:1–5 — это 2:28–32 в Синодальном)
   jol(ch) {
     if (ch.length === 3) return { chapters: ch, notes: [], warnings: [] }
@@ -168,6 +223,10 @@ export function buildOutput(parsed, books, meta = {}) {
     warnings.push(...fixed.warnings)
     files[b.id] = chapters
     indexBooks.push({ id: b.id, verses: chapters.map((ch) => ch.length) })
+
+    // Ссылки вида «(9:22)» в начале стиха быть не должны; если они остались (кроме исправленных книг), сообщаем
+    const prefixed = chapters.flat().filter((t) => /^\(\d+:\d+\)/.test(t)).length
+    if (prefixed > 0) warnings.push(`${b.name}: стихов со ссылкой в скобках в начале: ${prefixed}`)
 
     const verseCount = chapters.reduce((n, ch) => n + ch.filter(Boolean).length, 0)
     totalVerses += verseCount
