@@ -5,7 +5,7 @@ import { flattenWords, splitIntoPieces } from '../logic/exercises'
 import { buildVerseGaps } from './gaps'
 import {
   availableTypes, distance, followingVerses, gapSettings, partialSettings, patternType, pickReviewVerses, pickVerses,
-  planLesson, planOfType, planReview, planTest, resolveType, reviewWeight, shouldSkipWhere, typingVisiblePct, weightedSample,
+  isTop, lessonPool, planLesson, planOfType, planReview, planTest, resolveType, reviewWeight, shouldSkipWhere, typingVisiblePct, weightedSample,
 } from './generator'
 import { applySliderMask, makeRanks, pickVisibleWords } from './mask'
 import { stepTier, type LessonStep } from './types'
@@ -174,6 +174,57 @@ describe('план урока', () => {
 
   it('без стихов урока нет', () => {
     expect(planLesson([], T0)).toEqual([])
+  })
+})
+
+describe('стихи высшего уровня попадаются редко', () => {
+  const top = (n: number, nextReviewAt: number) => verse(n, { strength: 6, stage: 4, nextReviewAt })
+  const weak = (n: number) => verse(n, { strength: 2, stage: 1, nextReviewAt: T0 + DAY })
+
+  it('пока есть слабые стихи, сильный без срока сегодня в урок не берётся', () => {
+    const verses = [top(1, T0 + 5 * DAY), top(2, T0 + 9 * DAY), weak(10), weak(11)]
+    expect(isTop(verses[0])).toBe(true)
+    expect(lessonPool(verses, T0).map((v) => v.verse)).toEqual([10, 11])
+    for (let i = 1; i <= 30; i++) {
+      for (const type of ['regular', 'review', 'test'] as const) {
+        const steps = planOfType(type, verses, T0, seeded(i))
+        steps.forEach((s) => s.verseKeys.forEach((k) => expect(['rst:mat:5:10', 'rst:mat:5:11']).toContain(k)))
+      }
+    }
+  })
+
+  it('сильный стих, которому сегодня пора повторяться (или пора было раньше), попадает в урок, но с малым числом упражнений', () => {
+    const verses = [top(1, T0 - 3 * DAY), weak(10), weak(11)]
+    expect(lessonPool(verses, T0).map((v) => v.verse)).toEqual([1, 10, 11])
+    let seen = 0
+    for (let i = 1; i <= 30; i++) {
+      const steps = planReview(verses, T0, seeded(i))
+      const own = steps.filter((s) => s.verseKeys.length === 1 && s.verseKeys[0] === 'rst:mat:5:1')
+      expect(own.length).toBeLessThanOrEqual(2)
+      if (own.length > 0) seen++
+    }
+    expect(seen).toBeGreaterThan(0)
+  })
+
+  it('если слабых стихов не осталось, берутся все, но стих, которому пора повторяться, попадает обязательно', () => {
+    const verses = [
+      top(1, T0 + 8 * DAY), top(2, T0 - DAY), top(3, T0 + 9 * DAY),
+      top(4, T0 + 12 * DAY), verse(5, { strength: 7, stage: 4, nextReviewAt: T0 + 20 * DAY }),
+    ]
+    expect(lessonPool(verses, T0)).toHaveLength(5)
+    const picked = pickVerses(verses, T0).map((v) => v.verse)
+    expect(picked).toContain(2)
+    expect(picked.length).toBeLessThanOrEqual(3)
+  })
+
+  it('после того как сильный стих повторён и срок ушёл вперёд, он снова исчезает из уроков', () => {
+    const verses = [top(1, T0 + 14 * DAY), weak(10)]
+    expect(lessonPool(verses, T0).map((v) => v.verse)).toEqual([10])
+  })
+
+  it('тип урока определяется по доступным стихам: тест не берёт сильные стихи без срока', () => {
+    const verses = [top(1, T0 + 5 * DAY), verse(2, { strength: 1, stage: 1, nextReviewAt: T0 + DAY })]
+    expect(resolveType('test', verses, T0)).toBe('review')
   })
 })
 

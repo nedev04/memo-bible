@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   buildBlocks, buildErrors, buildGaps, buildLineEnding, buildNextLineTasks, buildPartialMask,
-  flattenWords, groupLines, judgeTyped, scoreOrder, shuffleBlocks, toLines, visibleMask,
+  flattenWords, groupLines, judgeTyped, sameOrderText, scoreOrder, shuffleBlocks, toLines, visibleMask,
 } from './exercises'
 
 function seeded(seed: number) {
@@ -85,6 +85,15 @@ describe('buildBlocks', () => {
     expect(order).not.toEqual([0, 1, 2, 3])
     expect([...order].sort()).toEqual([0, 1, 2, 3])
   })
+  it('верный итоговый текст засчитывается, даже если части стоят иначе', () => {
+    const correct = ['Вор приходит только', 'для того,', 'чтобы украсть;', 'я пришёл', 'для', 'того,', 'чтобы имели жизнь']
+    // «для того,» и «для» + «того,» поменялись местами, а текст получился тот же
+    const swapped = ['Вор приходит только', 'для', 'того,', 'чтобы украсть;', 'я пришёл', 'для того,', 'чтобы имели жизнь']
+    expect(sameOrderText(swapped, correct)).toBe(true)
+    expect(scoreOrder(swapped, correct)).toBe(100)
+    expect(scoreOrder([...swapped].reverse(), correct)).toBeLessThan(100)
+  })
+
   it('оценка по позициям', () => {
     expect(scoreOrder(['a', 'b', 'c', 'd'], ['a', 'b', 'c', 'd'])).toBe(100)
     expect(scoreOrder(['b', 'a', 'c', 'd'], ['a', 'b', 'c', 'd'])).toBe(50)

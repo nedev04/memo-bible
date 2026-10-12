@@ -33,8 +33,14 @@ describe('список «Мои стихи»', () => {
     expect(row.keys).toEqual(['rst:mat:5:7', 'rst:mat:5:8'])
   })
 
+  it('седьмой уровень — отдельная группа «выучено»', () => {
+    const rows = buildLibrary([verse('mat', 5, 1, 6), verse('mat', 5, 2, 7), verse('mat', 5, 3, 7)])
+    expect(rows.map((r) => `${r.from}-${r.to}:${r.level}`)).toEqual(['1-1:strong', '2-3:learned'])
+    expect(levelCounts([verse('mat', 5, 1, 7)]).learned).toBe(1)
+  })
+
   it('подсчёт по твёрдости', () => {
     const counts = levelCounts([verse('mat', 5, 1, 0), verse('mat', 5, 2, 1), verse('mat', 5, 3, 3), verse('mat', 5, 4, 6), verse('mat', 5, 5, 6)])
-    expect(counts).toEqual({ new: 1, started: 1, medium: 1, strong: 2 })
+    expect(counts).toEqual({ new: 1, started: 1, medium: 1, strong: 2, learned: 0 })
   })
 })

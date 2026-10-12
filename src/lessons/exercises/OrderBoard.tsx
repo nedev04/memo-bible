@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
-import { scoreOrder, shuffleBlocks } from '../../logic/exercises'
+import { sameOrderText, scoreOrder, shuffleBlocks } from '../../logic/exercises'
 
 interface Props {
   /** Части в правильном порядке */
@@ -30,6 +30,8 @@ export default function OrderBoard({ texts, layout, labels, hint, onDone }: Prop
   const rest = pile.filter((id) => !placed.includes(id))
   const allPlaced = placed.length === texts.length
   const score = scoreOrder(placed.map((id) => texts[id]), texts)
+  // Если итоговый текст верный, все части считаются верными, даже если стоят иначе, чем в исходной разбивке
+  const textIsRight = allPlaced && sameOrderText(placed.map((id) => texts[id]), texts)
 
   function tap(id: number) {
     if (checked) return
@@ -121,7 +123,7 @@ export default function OrderBoard({ texts, layout, labels, hint, onDone }: Prop
 
       <ol className={`zone answer ${layout}`} data-zone="answer" aria-label="Ваш порядок">
         {placed.length === 0 && <li className="zone-empty">Нажимайте на части или перетаскивайте их сюда</li>}
-        {placed.map((id, i) => piece(id, i, checked ? (texts[id] === texts[i] ? 'ok' : 'bad') : undefined))}
+        {placed.map((id, i) => piece(id, i, checked ? (textIsRight || texts[id] === texts[i] ? 'ok' : 'bad') : undefined))}
       </ol>
 
       {!checked && rest.length > 0 && (

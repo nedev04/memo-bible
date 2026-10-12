@@ -86,7 +86,7 @@ function readVerse(v: unknown): BackupVerse | null {
   const ref = parseKey(v.key)
   if (!ref) return null
   const { addedAt, strength, nextReviewAt } = v
-  if (!isNum(addedAt) || !isNum(nextReviewAt) || !isNum(strength) || strength < 0 || strength > 6) return null
+  if (!isNum(addedAt) || !isNum(nextReviewAt) || !isNum(strength) || strength < 0 || strength > 7) return null
   // Поля прогресса появились позже: в старых копиях их нет
   const orNull = (x: unknown) => (isNum(x) ? x : null)
   // В копиях прежних версий стадии нет: тогда расписание считалось по силе

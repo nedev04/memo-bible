@@ -403,6 +403,7 @@ input[type="file"] { max-width: 100%; color: var(--ink); }
 .chip.active { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
 .row-head { display: flex; align-items: baseline; gap: 0.6rem; flex-wrap: wrap; }
 .level-badge { font-size: 0.75rem; font-weight: 600; padding: 0.1rem 0.5rem; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); }
+.level-badge.learned { color: var(--accent-ink); background: var(--good); border-color: var(--good); }
 .level-badge.strong { color: var(--good); border-color: var(--good); }
 .level-badge.medium { color: var(--ink); border-color: var(--mark); background: color-mix(in srgb, var(--mark) 30%, transparent); }
 .level-badge.started { color: var(--accent); border-color: var(--accent); }

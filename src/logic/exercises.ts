@@ -216,9 +216,20 @@ export function shuffleBlocks(blocks: string[], rng: Rng = Math.random): number[
   return order
 }
 
-/** Доля блоков, стоящих на своих местах, в процентах */
+const joinText = (parts: string[]): string => parts.join(' ').replace(/\s+/g, ' ').trim()
+
+/**
+ * Совпадает ли итоговый текст. Части могут стоять иначе, чем в исходной разбивке, если от этого текст не меняется:
+ * например, «для того,» одной частью в одном месте и «для», «того,» двумя частями в другом.
+ */
+export function sameOrderText(placed: string[], correct: string[]): boolean {
+  return joinText(placed) === joinText(correct)
+}
+
+/** Доля частей, стоящих на своих местах, в процентах; если итоговый текст верный, всегда 100 */
 export function scoreOrder(placed: string[], correct: string[]): number {
   if (correct.length === 0) return 100
+  if (sameOrderText(placed, correct)) return 100
   const ok = correct.filter((b, i) => placed[i] === b).length
   return Math.round((ok / correct.length) * 100)
 }

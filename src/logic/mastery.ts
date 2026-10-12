@@ -1,20 +1,32 @@
 import type { VerseState } from '../types'
-import { BAD_SCORE, DAY, PARTIAL_SCORE, PASS_SCORE } from './config'
+import { BAD_SCORE, PARTIAL_SCORE, PASS_SCORE } from './config'
 
 /**
  * У стиха две независимые характеристики.
  *
- * Сила (0–6) показывает, насколько хорошо стих знают сейчас: 0 — только добавлен, 1–2 — начал учить,
- * 3–4 — средне, 5–6 — твёрдо. Она растёт за любые успешные упражнения, сколько угодно раз в день
- * (но упражнение должно быть достаточно сложным для текущей силы), и падает при ошибках.
+ * Сила (0–7) показывает, насколько хорошо стих знают сейчас:
+ * 0 — только добавлен, 1–2 — начал учить, 3–4 — средне, 5–6 — твёрдо, 7 — выучено.
+ * Сила 1–6 растёт за успешные упражнения, сколько угодно раз в день (упражнение должно быть достаточно сложным
+ * для текущей силы), и падает при ошибках. Седьмой уровень даётся отдельным правилом (см. ниже).
  *
- * Стадия повторения (0–6) задаёт расписание: когда стих нужно повторить через 1, 3, 7, 14, 30 и 60 дней.
- * Она растёт только когда повторение прошло успешно в назначенный срок.
+ * Стадия повторения (0–6) — число пройденных циклов повторения. Она задаёт расписание: циклы приходятся на дни
+ * 0, 1, 3, 7, 14, 30, 60 от начала изучения. Стадия растёт только когда цикл успешно пройден в назначенный день.
  */
-export const MAX_STRENGTH = 6
+export const MAX_STRENGTH = 7
+/** Выше этой силы стих поднимается не упражнениями, а правилом четвёртого цикла */
+export const PERFORMANCE_MAX = 6
+export const MAX_STAGE = 6
+/** На каком цикле повторения стих с силой 6 становится «выученным» (7-й день при регулярных занятиях) */
+export const LEARNED_CYCLE = 4
 
-/** Через сколько дней повторять стих на каждой стадии (индекс = стадия) */
-export const VERSE_INTERVAL_DAYS = [0, 1, 3, 7, 14, 30, 60]
+/**
+ * Через сколько дней назначается следующий цикл после перехода на стадию (индекс = новая стадия).
+ * При занятиях без пропусков циклы приходятся на дни 0, 1, 3, 7, 14, 30, 60. Следующий срок считается от дня,
+ * когда цикл действительно пройден, поэтому пропуск сдвигает все последующие циклы на столько же дней.
+ */
+export const CYCLE_GAP_DAYS = [0, 1, 2, 4, 7, 16, 30]
+/** Когда стадия уже последняя, стих повторяется раз в столько дней */
+export const MAINTENANCE_GAP_DAYS = 60
 
 /**
  * Сложность упражнения для запоминания:
@@ -34,13 +46,25 @@ export const xpFor = (tier: Tier, score: number): number => Math.round((XP_BASE[
 
 export const isDue = (v: Pick<VerseState, 'nextReviewAt'>, now: number): boolean => now >= v.nextReviewAt
 
-export type StrengthGroup = 'new' | 'started' | 'medium' | 'strong'
+/**
+ * Начало календарного дня через `days` дней (по местному времени). Сроки повторений считаются по календарным дням:
+ * стих, изученный вечером, «завтра» доступен с самого утра, а не через 24 часа.
+ */
+export function dayStartPlus(now: number, days: number): number {
+  const d = new Date(now)
+  d.setHours(0, 0, 0, 0)
+  d.setDate(d.getDate() + days)
+  return d.getTime()
+}
+
+export type StrengthGroup = 'new' | 'started' | 'medium' | 'strong' | 'learned'
 
 export function strengthGroup(strength: number): StrengthGroup {
-  if (strength <= 0) return 'new'
-  if (strength <= 2) return 'started'
-  if (strength <= 4) return 'medium'
-  return 'strong'
+  if (strength >= 7) return 'learned'
+  if (strength >= 5) return 'strong'
+  if (strength >= 3) return 'medium'
+  if (strength >= 1) return 'started'
+  return 'new'
 }
 
 export const STRENGTH_LABEL: Record<StrengthGroup, string> = {
@@ -48,6 +72,7 @@ export const STRENGTH_LABEL: Record<StrengthGroup, string> = {
   started: 'Начал учить',
   medium: 'Средне',
   strong: 'Твёрдо',
+  learned: 'Выучено',
 }
 
 export interface VerseUpdate {
@@ -55,22 +80,27 @@ export interface VerseUpdate {
   change: 'up' | 'down' | 'same'
 }
 
+/** Через сколько дней следующий цикл после перехода на эту стадию */
+const gapAfter = (stage: number): number => CYCLE_GAP_DAYS[Math.min(stage, MAX_STAGE)]
+
 /**
  * Применяет результат одного упражнения по стиху.
  *
  * Сила:
- * - результат 90% и выше растёт силу на 1, если упражнение не проще нужного (REQUIRED_TIER) и сила не максимальная.
+ * - результат 90% и выше поднимает силу на 1 (до 6), если упражнение не проще нужного (REQUIRED_TIER).
  *   Ограничения «раз в день» нет;
  * - результат ниже 70% снижает силу на 1 (ниже 40% — на 2), но не ниже 1;
- * - результат 70–89% силу не меняет.
+ * - результат 70–89% силу не меняет;
+ * - седьмой уровень («выучено»): когда стих с силой 6 успешно проходит четвёртый цикл повторения (или любой следующий).
  *
- * Расписание повторений:
- * - первый зачёт нового стиха ставит его на стадию 1: повторить через день;
- * - зачёт в назначенный срок (и достаточно сложным упражнением) переводит на следующую стадию (3, 7, 14, 30, 60 дней).
+ * Расписание (циклы):
+ * - первый зачёт нового стиха завершает первый цикл (стадия 1): второй цикл назначается на завтра;
+ * - зачёт в назначенный день (достаточно сложным упражнением) завершает цикл: стадия растёт, следующий цикл
+ *   назначается через положенное число дней от сегодняшнего дня. Если цикл пройден позже срока, все следующие сдвигаются.
  *   До зачёта стих остаётся «к повторению»;
  * - ошибка в срок снижает стадию (на 1, ниже 40% — на 2, не ниже 1) и возвращает стих на завтра;
- * - ошибка до срока стадию не меняет, но стих вернётся в очередь не позже чем через день;
- * - результат 70–89% в срок: повтор раньше (через половину интервала).
+ * - ошибка до срока стадию не меняет, но стих вернётся в очередь не позже чем завтра;
+ * - результат 70–89% в срок: повтор раньше, примерно через половину обычного интервала.
  */
 export function applyVerseResult(verse: VerseState, result: { tier: Tier; score: number }, now: number): VerseUpdate {
   const { tier, score } = result
@@ -89,17 +119,17 @@ export function applyVerseResult(verse: VerseState, result: { tier: Tier; score:
     if (st >= 1 && due) {
       v.stage = Math.max(1, st - drop)
       v.lapses = verse.lapses + 1
-      v.nextReviewAt = now + DAY
+      v.nextReviewAt = dayStartPlus(now, 1)
     } else if (st >= 1) {
-      v.nextReviewAt = Math.min(verse.nextReviewAt, now + DAY)
+      v.nextReviewAt = Math.min(verse.nextReviewAt, dayStartPlus(now, 1))
     } else {
       v.nextReviewAt = now // новый стих пока не получился — остаётся «к изучению»
     }
   } else if (score < PASS_SCORE) {
     if (st === 0) v.nextReviewAt = now
-    else if (due) v.nextReviewAt = now + 0.5 * VERSE_INTERVAL_DAYS[st] * DAY
+    else if (due) v.nextReviewAt = dayStartPlus(now, Math.max(1, Math.round(gapAfter(st) / 2)))
   } else {
-    if (s < MAX_STRENGTH && tier >= REQUIRED_TIER[s]) {
+    if (s < PERFORMANCE_MAX && tier >= REQUIRED_TIER[s]) {
       v.strength = s + 1
       v.lastUpAt = now
       change = 'up'
@@ -107,13 +137,20 @@ export function applyVerseResult(verse: VerseState, result: { tier: Tier; score:
     if (st === 0) {
       if (v.strength >= 1) {
         v.stage = 1
-        v.nextReviewAt = now + VERSE_INTERVAL_DAYS[1] * DAY
+        v.nextReviewAt = dayStartPlus(now, gapAfter(1))
       } else {
         v.nextReviewAt = now
       }
     } else if (due && tier >= REQUIRED_TIER[st]) {
-      v.stage = Math.min(MAX_STRENGTH, st + 1)
-      v.nextReviewAt = now + VERSE_INTERVAL_DAYS[v.stage] * DAY
+      const finalStage = st >= MAX_STAGE
+      v.stage = Math.min(MAX_STAGE, st + 1)
+      v.nextReviewAt = dayStartPlus(now, finalStage ? MAINTENANCE_GAP_DAYS : gapAfter(v.stage))
+      // Четвёртый цикл пройден, а сила уже 6: стих выучен
+      if (v.stage >= LEARNED_CYCLE && v.strength === PERFORMANCE_MAX) {
+        v.strength = MAX_STRENGTH
+        v.lastUpAt = now
+        change = 'up'
+      }
     }
   }
   return { verse: v, change }

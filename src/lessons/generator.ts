@@ -22,6 +22,20 @@ export function distance(a: VerseState, b: VerseState): number {
   return Math.abs(a.verse - b.verse)
 }
 
+/** Стихи такого уровня и выше считаются выученными до предела: в уроки они попадают редко */
+export const TOP_STRENGTH = 6
+export const isTop = (v: VerseState): boolean => v.strength >= TOP_STRENGTH
+
+/**
+ * Какие стихи вообще можно брать в урок. Стихи высшего уровня попадают в урок, только если им сегодня пора повторяться
+ * (по графику или с опозданием) либо если стихов слабее не осталось совсем. Если слабые стихи есть, а у сильного
+ * сегодня по графику повторения нет, он в уроки не попадает вообще.
+ */
+export function lessonPool(all: VerseState[], now: number): VerseState[] {
+  if (all.every(isTop)) return all
+  return all.filter((v) => !isTop(v) || isDue(v, now))
+}
+
 /** Контекст планирования: что уже спрашивали недавно (чтобы не надоедать однотипными вопросами) */
 export interface PlanContext {
   /** Книги последних вопросов «где написано», самые свежие первыми */
@@ -86,9 +100,10 @@ export function availableTypes(all: VerseState[]): Record<LessonType, boolean> {
  */
 export function resolveType(preferred: LessonType, all: VerseState[], now: number): LessonType | null {
   if (all.length === 0) return null
-  const can = availableTypes(all)
+  const pool = lessonPool(all, now)
+  const can = availableTypes(pool)
   if (preferred === 'regular') {
-    const hasWork = all.some((v) => v.strength === 0 || isDue(v, now) || needsAttention(v))
+    const hasWork = pool.some((v) => v.strength === 0 || isDue(v, now) || needsAttention(v))
     return hasWork || !can.review ? 'regular' : 'review'
   }
   if (preferred === 'review') return can.review ? 'review' : 'regular'
@@ -165,7 +180,7 @@ export function reviewWeight(v: VerseState, now: number): number {
   if (needsAttention(v)) w += 4
   if (isDue(v, now)) w += 3
   if (now - v.addedAt < 7 * DAY) w += 2
-  w += (6 - v.strength) * 0.6
+  w += Math.max(0, 6 - v.strength) * 0.6
   if (v.strength >= 5 && !isDue(v, now)) w *= 0.3
   return w
 }
@@ -239,7 +254,9 @@ function reviewSteps(v: VerseState, all: VerseState[], rng: Rng, now: number, ct
   if (shouldSkipWhere(v.book, ctx.recentWhere, rng)) others = others.filter((o) => o.kind !== 'whereWritten')
   if (others.length === 0) others = [c('fillGaps', gapSettings(s))]
 
-  const chosen = [...shuffle(others, rng).slice(0, isDue(v, now) ? 2 : 1), shuffle(gates, rng)[0]]
+  // Сильному стиху достаётся немного упражнений: одно дополнительное и главное
+  const extra = isDue(v, now) && !isTop(v) ? 2 : 1
+  const chosen = [...shuffle(others, rng).slice(0, extra), shuffle(gates, rng)[0]]
   if (chosen.some((x) => x.kind === 'whereWritten')) ctx.recentWhere.unshift(v.book)
   return chosen
 }
@@ -277,7 +294,8 @@ export function planRegular(
   all: VerseState[], now: number, rng: Rng = Math.random, only?: Set<string>, context?: PlanContext,
 ): LessonStep[] {
   const ctx = newContext(context)
-  const picked = only ? restrict(all, only).sort(byBible).slice(0, MAX_VERSES) : pickVerses(all, now)
+  const pool = only ? all : lessonPool(all, now)
+  const picked = only ? restrict(all, only).sort(byBible).slice(0, MAX_VERSES) : pickVerses(pool, now)
   const fresh = picked.filter((x) => x.strength === 0)
   const out: Candidate[] = []
   for (const v of fresh) {
@@ -285,7 +303,7 @@ export function planRegular(
     out.push({ kind: 'partial', verseKeys: [v.key], settings: partialSettings(0) })
   }
   out.push(...shuffle(fresh.flatMap((v) => easyPractice(v, rng, ctx)), rng))
-  for (const v of picked.filter((x) => x.strength > 0)) out.push(...reviewSteps(v, all, rng, now, ctx))
+  for (const v of picked.filter((x) => x.strength > 0)) out.push(...reviewSteps(v, pool, rng, now, ctx))
   return toSteps(out)
 }
 
@@ -294,9 +312,11 @@ export function planReview(
   all: VerseState[], now: number, rng: Rng = Math.random, only?: Set<string>, context?: PlanContext,
 ): LessonStep[] {
   const ctx = newContext(context)
-  const pool = all.filter((v) => v.strength >= 1)
-  const picked = only ? restrict(pool, only).sort(byBible).slice(0, MAX_VERSES) : pickReviewVerses(all, now, rng)
-  return toSteps(picked.flatMap((v) => reviewSteps(v, all, rng, now, ctx)))
+  const base = only ? all : lessonPool(all, now)
+  const picked = only
+    ? restrict(base.filter((v) => v.strength >= 1), only).sort(byBible).slice(0, MAX_VERSES)
+    : pickReviewVerses(base, now, rng)
+  return toSteps(picked.flatMap((v) => reviewSteps(v, base, rng, now, ctx)))
 }
 
 /**
@@ -305,7 +325,8 @@ export function planReview(
  * с силы 4 текст вводится с чистого листа.
  */
 export function planTest(all: VerseState[], now: number, rng: Rng = Math.random, only?: Set<string>): LessonStep[] {
-  const pool = restrict(all, only).filter((v) => v.strength >= TEST_MIN_STRENGTH)
+  const base = only ? all : lessonPool(all, now)
+  const pool = restrict(base, only).filter((v) => v.strength >= TEST_MIN_STRENGTH)
   if (pool.length === 0) return []
 
   let chosen: VerseState[]
@@ -319,7 +340,7 @@ export function planTest(all: VerseState[], now: number, rng: Rng = Math.random,
       rng,
     )[0]
     const run: VerseState[] = []
-    for (const next of followingVerses(anchor, all)) {
+    for (const next of followingVerses(anchor, base)) {
       if (next.strength < TEST_MIN_STRENGTH || run.length >= 2) break
       run.push(next)
     }

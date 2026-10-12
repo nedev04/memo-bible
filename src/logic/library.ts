@@ -50,7 +50,7 @@ export function buildLibrary(verses: VerseState[]): LibraryGroup[] {
 
 /** Сколько стихов в каждой твёрдости */
 export function levelCounts(verses: VerseState[]): Record<StrengthGroup, number> {
-  const counts: Record<StrengthGroup, number> = { new: 0, started: 0, medium: 0, strong: 0 }
+  const counts: Record<StrengthGroup, number> = { new: 0, started: 0, medium: 0, strong: 0, learned: 0 }
   for (const v of verses) counts[strengthGroup(v.strength)]++
   return counts
 }

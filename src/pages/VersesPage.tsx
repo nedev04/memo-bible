@@ -14,6 +14,7 @@ type Filter = 'all' | StrengthGroup
 /** Порядок и названия вкладок: от самых выученных к новым */
 const FILTERS: { id: Filter; label: string }[] = [
   { id: 'all', label: 'Все' },
+  { id: 'learned', label: STRENGTH_LABEL.learned },
   { id: 'strong', label: STRENGTH_LABEL.strong },
   { id: 'medium', label: STRENGTH_LABEL.medium },
   { id: 'started', label: STRENGTH_LABEL.started },
@@ -60,8 +61,8 @@ function GroupRow({ group, now }: { group: LibraryGroup; now: number }) {
           <span className={`level-badge ${group.level}`}>{STRENGTH_LABEL[group.level]}</span>
         </div>
         <small className="vstatus">
-          <span className="dots" role="img" aria-label={`Сила ${group.minStrength} из 6`}>
-            {'●'.repeat(group.minStrength)}{'○'.repeat(6 - group.minStrength)}
+          <span className="dots" role="img" aria-label={`Сила ${group.minStrength} из 7`}>
+            {'●'.repeat(group.minStrength)}{'○'.repeat(7 - group.minStrength)}
           </span>
           {' · '}{statusLine(group, now)}
         </small>
