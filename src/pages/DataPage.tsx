@@ -1,113 +1,29 @@
 import { useLiveQuery } from 'dexie-react-hooks'
-import { useRef, useState } from 'react'
-import { clearAll, countLiveTexts, db, exportAll, importBackup } from '../db/db'
+import { useState } from 'react'
+import { clearAll, countLiveVerses } from '../db/db'
 import CloudSection from './CloudSection'
-import { getLastBackup, setLastBackup } from '../db/backupMeta'
-import { backupFileName, createBackup, parseBackup, type BackupData } from '../logic/backup'
-
-function download(filename: string, text: string) {
-  const blob = new Blob([text], { type: 'application/json' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = filename
-  document.body.appendChild(a)
-  a.click()
-  a.remove()
-  setTimeout(() => URL.revokeObjectURL(url), 1000)
-}
-
-const fmt = (t: number) => new Date(t).toLocaleString('ru-RU', { dateStyle: 'long', timeStyle: 'short' })
 
 export default function DataPage() {
-  const textCount = useLiveQuery(() => countLiveTexts(), [])
-  const attemptCount = useLiveQuery(() => db.attempts.count(), [])
-  const [lastBackup, setLast] = useState<number | null>(() => getLastBackup())
-  const [pending, setPending] = useState<BackupData | null>(null)
-  const [message, setMessage] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null)
-  const fileRef = useRef<HTMLInputElement>(null)
-
-  async function doExport() {
-    const { texts, attempts, verses } = await exportAll()
-    const now = Date.now()
-    download(backupFileName(now), createBackup(texts, attempts, now, verses))
-    setLastBackup(now)
-    setLast(now)
-    setMessage({ kind: 'ok', text: 'Файл скачан. Сохраните его в надёжном месте: в облаке или отправьте себе.' })
-  }
-
-  async function onFile(file: File | undefined) {
-    setMessage(null)
-    setPending(null)
-    if (!file) return
-    try {
-      setPending(parseBackup(await file.text()))
-    } catch (e) {
-      setMessage({ kind: 'error', text: e instanceof Error ? e.message : 'Не удалось прочитать файл.' })
-    }
-    if (fileRef.current) fileRef.current.value = ''
-  }
-
-  async function doImport(mode: 'replace' | 'merge') {
-    if (!pending) return
-    if (mode === 'replace' && !confirm('Текущие тексты и вся история будут заменены данными из файла. Продолжить?')) return
-    try {
-      await importBackup(pending, mode)
-      setMessage({ kind: 'ok', text: `Загружено: текстов ${pending.texts.length}, упражнений ${pending.attempts.length}.` })
-      setPending(null)
-    } catch {
-      setMessage({ kind: 'error', text: 'Не удалось сохранить данные из файла.' })
-    }
-  }
+  const verseCount = useLiveQuery(() => countLiveVerses(), [])
+  const [message, setMessage] = useState<string | null>(null)
 
   async function doClear() {
-    if (!confirm('Удалить все тексты и всю историю? Это нельзя отменить.')) return
+    if (!confirm('Удалить все стихи и весь прогресс? Это нельзя отменить. Если вы вошли в облако, они удалятся и на других устройствах.')) return
     await clearAll()
-    setMessage({ kind: 'ok', text: 'Все данные удалены.' })
+    setMessage('Все данные удалены.')
   }
 
   return (
     <>
-      <h1>Профиль и данные</h1>
+      <h1>Профиль</h1>
 
       <CloudSection />
 
-      {message && <p className={message.kind === 'ok' ? 'notice ok' : 'notice error'} role="status">{message.text}</p>}
-
-      <h2>Резервная копия</h2>
-      <p className="muted-block">
-        Данные хранятся в браузере на этом устройстве. Очистка данных сайта или смена телефона сотрут тексты и прогресс,
-        если не подключено облако. Резервная копия в файле защитит и в этом случае.
-      </p>
-      <p>
-        Сейчас в приложении: текстов {textCount ?? 0}, упражнений {attemptCount ?? 0}.
-        <small>{lastBackup ? `Последняя копия: ${fmt(lastBackup)}` : 'Копия ещё не скачивалась.'}</small>
-      </p>
-      <button className="btn primary" onClick={doExport} disabled={!textCount}>Скачать копию</button>
-
-      <h2>Восстановление</h2>
-      <p className="muted-block">Выберите файл, скачанный ранее. Данные можно заменить или добавить к текущим.</p>
-      <input ref={fileRef} type="file" accept=".json,application/json" onChange={(e) => onFile(e.target.files?.[0])} />
-
-      {pending && (
-        <div className="pending">
-          <p>
-            В файле: стихов {pending.verses.length}, текстов {pending.texts.length}, упражнений {pending.attempts.length}
-            {pending.exportedAt > 0 && ` (копия от ${fmt(pending.exportedAt)})`}.
-            {pending.skipped > 0 && ` Пропущено повреждённых записей: ${pending.skipped}.`}
-          </p>
-          <div className="row">
-            <button className="btn primary" onClick={() => doImport('replace')}>Заменить текущие</button>
-            <button className="btn ghost" onClick={() => doImport('merge')}>Добавить к текущим</button>
-            <button className="btn ghost" onClick={() => setPending(null)}>Отмена</button>
-          </div>
-          <small>«Добавить» не проверяет дубликаты: если загрузить один файл дважды, тексты задвоятся.</small>
-        </div>
-      )}
+      {message && <p className="notice ok" role="status">{message}</p>}
 
       <h2>Удаление</h2>
-      <p className="muted-block">Если вы вошли в облако, удаление распространится и на другие устройства.</p>
-      <button className="btn danger" onClick={doClear} disabled={!textCount}>Удалить все данные</button>
+      <p className="muted-block">Стереть все стихи и прогресс. Если вы вошли в облако, удаление распространится и на другие устройства.</p>
+      <button className="btn danger" onClick={doClear} disabled={!verseCount}>Удалить все данные</button>
     </>
   )
 }

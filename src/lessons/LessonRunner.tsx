@@ -9,7 +9,6 @@ import PartialVerse from './exercises/PartialVerse'
 import RevealVerse from './exercises/RevealVerse'
 import TypeVerses from './exercises/TypeVerses'
 import WhereWritten from './exercises/WhereWritten'
-import type { LessonType } from '../types'
 import { KIND_SHOWS_REF, KIND_TITLE, type ExerciseKind, type LessonStep, type StepOutcome, type StepProps, type StepResult, type VerseText } from './types'
 
 const COMPONENTS: Record<ExerciseKind, ComponentType<StepProps>> = {
@@ -40,7 +39,6 @@ export interface LessonSummary {
 }
 
 interface Props {
-  type: LessonType
   steps: LessonStep[]
   texts: Map<string, VerseText>
   /** Сохраняет результат (сила стиха, журнал) и возвращает полученный опыт */
@@ -53,7 +51,7 @@ interface Props {
   onFinish?: (summary: LessonSummary) => void
 }
 
-export default function LessonRunner({ type, steps, texts, record, onClose, onAnother, onFinish }: Props) {
+export default function LessonRunner({ steps, texts, record, onClose, onAnother, onFinish }: Props) {
   const [queue, setQueue] = useState<LessonStep[]>(steps)
   const [index, setIndex] = useState(0)
   const [result, setResult] = useState<StepResult | null>(null)
@@ -91,8 +89,8 @@ export default function LessonRunner({ type, steps, texts, record, onClose, onAn
       return
     }
     setResult(r)
-    // Ошибка: то же упражнение будет ещё раз в конце урока (один раз). В тесте повторов нет.
-    if (r.score < PASS_SCORE && !step.retry && type !== 'test') {
+    // Ошибка: то же упражнение будет ещё раз в конце урока (один раз). Ввод по памяти не повторяется: он длинный.
+    if (r.score < PASS_SCORE && !step.retry && step.kind !== 'typing') {
       setMistakes((m) => m + 1)
       setQueue((q) => [...q, { ...step, id: `${step.id}:retry`, retry: true }])
     }
@@ -112,7 +110,7 @@ export default function LessonRunner({ type, steps, texts, record, onClose, onAn
     const list = [...changes.entries()]
     return (
       <div className="result lesson-done">
-        <h1>{type === 'test' ? 'Тест пройден' : 'Урок пройден'}</h1>
+        <h1>Урок пройден</h1>
         <p className="xp">+{xp} опыта</p>
         <p className="muted-block">{mistakes === 0 ? 'Без ошибок.' : `Ошибок: ${mistakes}.`}</p>
         {list.length > 0 && (
@@ -142,7 +140,7 @@ export default function LessonRunner({ type, steps, texts, record, onClose, onAn
     <div className={result ? 'lesson has-feedback' : 'lesson'}>
       <div className="lesson-top">
         <button className="lesson-close" onClick={close} aria-label="Выйти из урока">✕</button>
-        {type !== 'test' && <ProgressBar value={finished} max={total} />}
+        <ProgressBar value={finished} max={total} />
       </div>
 
       <h1 className="lesson-title">
@@ -160,7 +158,7 @@ export default function LessonRunner({ type, steps, texts, record, onClose, onAn
             {result.score >= PASS_SCORE ? 'Верно!' : result.score >= PARTIAL_SCORE ? 'Почти верно' : 'Есть ошибки'}
           </strong>
           {result.detail && <span>{result.detail}</span>}
-          {result.score < PASS_SCORE && !step.retry && type !== 'test' && <small>Это упражнение повторится в конце урока.</small>}
+          {result.score < PASS_SCORE && !step.retry && step.kind !== 'typing' && <small>Это упражнение повторится в конце урока.</small>}
           <button className="btn primary" autoFocus onClick={() => advance()}>Продолжить</button>
         </div>
       )}

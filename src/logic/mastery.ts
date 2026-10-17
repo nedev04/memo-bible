@@ -1,5 +1,5 @@
 import type { VerseState } from '../types'
-import { BAD_SCORE, PARTIAL_SCORE, PASS_SCORE } from './config'
+import { BAD_SCORE, DAY, PARTIAL_SCORE, PASS_SCORE } from './config'
 
 /**
  * У стиха две независимые характеристики.
@@ -158,3 +158,10 @@ export function applyVerseResult(verse: VerseState, result: { tier: Tier; score:
 
 /** Стих нужно уделить внимание: недавно допущена ошибка или он ещё не получился */
 export const needsAttention = (v: VerseState): boolean => v.lastScore !== null && v.lastScore < PARTIAL_SCORE
+
+/** Подпись срока повторения: «Пора повторить», «Повтор завтра», «Повтор через 3 дн.» */
+export function dueLabel(nextReviewAt: number, now: number): string {
+  if (now >= nextReviewAt) return 'Пора повторить'
+  const days = Math.ceil((nextReviewAt - now) / DAY)
+  return days <= 1 ? 'Повтор завтра' : `Повтор через ${days} дн.`
+}

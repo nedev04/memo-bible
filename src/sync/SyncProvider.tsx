@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { Session } from '@supabase/supabase-js'
-import { countLiveTexts, wipeLocal } from '../db/db'
+import { countLiveVerses, wipeLocal } from '../db/db'
 import { cloudConfigured, supabase } from './client'
 import { syncOnce } from './sync'
 import { displayNameOf, validateName } from './profile'
@@ -121,7 +121,7 @@ export function SyncProvider({ children }: { children: ReactNode }) {
       : null
     if (u) {
       const prev = getSyncUserId()
-      if (prev && prev !== u.id && (await countLiveTexts()) > 0) {
+      if (prev && prev !== u.id && (await countLiveVerses()) > 0) {
         const ok = confirm(
           'На этом устройстве остались данные другого аккаунта. Удалить их и войти в новый аккаунт? ' +
             'Если отказаться, вход будет отменён.',

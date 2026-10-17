@@ -1,101 +1,5 @@
-import { EXERCISES } from '../logic/config'
 import { parseKey } from '../bible/refs'
-import type { Attempt, Difficulty, ExerciseId, LessonRecord, TextItem, VerseReview, VerseState } from '../types'
-
-/** Строка таблицы texts в облаке */
-export interface TextRow {
-  user_id?: string
-  uid: string
-  title: string
-  content: string
-  created_at: number
-  level: number
-  level_points: number
-  level_changed_at: number
-  last_level_up_at: number | null
-  next_review_at: number
-  updated_at: number
-  deleted_at: number | null
-  server_updated_at?: string
-}
-
-/** Строка таблицы attempts в облаке */
-export interface AttemptRow {
-  user_id?: string
-  uid: string
-  text_uid: string
-  exercise: string
-  difficulty: number
-  score: number
-  points: number
-  created_at: number
-  server_updated_at?: string
-}
-
-export function textToRow(t: TextItem, userId: string): TextRow {
-  return {
-    user_id: userId,
-    uid: t.uid,
-    title: t.title,
-    content: t.content,
-    created_at: t.createdAt,
-    level: t.level,
-    level_points: t.levelPoints,
-    level_changed_at: t.levelChangedAt,
-    last_level_up_at: t.lastLevelUpAt,
-    next_review_at: t.nextReviewAt,
-    updated_at: t.updatedAt,
-    deleted_at: t.deletedAt ?? null,
-  }
-}
-
-export function rowToText(r: TextRow): Omit<TextItem, 'id'> {
-  return {
-    uid: r.uid,
-    title: r.title,
-    content: r.content,
-    createdAt: Number(r.created_at),
-    level: r.level,
-    levelPoints: r.level_points,
-    levelChangedAt: Number(r.level_changed_at),
-    lastLevelUpAt: r.last_level_up_at === null ? null : Number(r.last_level_up_at),
-    nextReviewAt: Number(r.next_review_at),
-    updatedAt: Number(r.updated_at),
-    deletedAt: r.deleted_at === null ? null : Number(r.deleted_at),
-  }
-}
-
-export function attemptToRow(a: Attempt, userId: string): AttemptRow {
-  return {
-    user_id: userId,
-    uid: a.uid,
-    text_uid: a.textUid,
-    exercise: a.exercise,
-    difficulty: a.difficulty,
-    score: a.score,
-    points: a.points,
-    created_at: a.createdAt,
-  }
-}
-
-/** Попытка с упражнением, которого эта версия приложения не знает (например, из более новой версии), пропускается */
-export function isKnownAttemptRow(r: AttemptRow): boolean {
-  return r.exercise in EXERCISES && r.difficulty >= 1 && r.difficulty <= 3
-}
-
-export function rowToAttempt(r: AttemptRow, localTextId: number): Attempt {
-  return {
-    uid: r.uid,
-    textId: localTextId,
-    textUid: r.text_uid,
-    exercise: r.exercise as ExerciseId,
-    difficulty: r.difficulty as Difficulty,
-    score: r.score,
-    points: r.points,
-    createdAt: Number(r.created_at),
-    dirty: 0,
-  }
-}
+import type { LessonRecord, VerseReview, VerseState } from '../types'
 
 /** Побеждает более новая версия записи. Нет локальной записи — берём облачную. При равенстве остаётся локальная. */
 export function remoteWins(local: { updatedAt: number } | undefined, remoteUpdatedAt: number): boolean {
@@ -230,7 +134,7 @@ export function rowToReview(r: ReviewRow): VerseReview {
   }
 }
 
-/** Строка таблицы lessons в облаке */
+/** Строка таблицы lessons в облаке. Столбцы type и status остались от прежней версии и всегда заполняются одинаково. */
 export interface LessonRow {
   user_id?: string
   uid: string
@@ -247,8 +151,8 @@ export function lessonToRow(l: LessonRecord, userId: string): LessonRow {
   return {
     user_id: userId,
     uid: l.uid,
-    type: l.type,
-    status: l.status,
+    type: 'regular',
+    status: 'done',
     verse_keys: l.verseKeys,
     xp: l.xp,
     mistakes: l.mistakes,
@@ -256,16 +160,13 @@ export function lessonToRow(l: LessonRecord, userId: string): LessonRow {
   }
 }
 
-/** Урок неизвестного типа (из более новой версии приложения) пропускается */
-export const isKnownLessonRow = (r: LessonRow): boolean =>
-  ['regular', 'review', 'test'].includes(r.type) && ['done', 'skipped'].includes(r.status)
+/** Пропускаем уроки без стихов (так выглядели «пропущенные» уроки прежней версии) */
+export const isKnownLessonRow = (r: LessonRow): boolean => Array.isArray(r.verse_keys) && r.verse_keys.length > 0
 
 export function rowToLesson(r: LessonRow): LessonRecord {
   return {
     uid: r.uid,
-    type: r.type as LessonRecord['type'],
-    status: r.status as LessonRecord['status'],
-    verseKeys: Array.isArray(r.verse_keys) ? r.verse_keys : [],
+    verseKeys: r.verse_keys,
     xp: r.xp,
     mistakes: r.mistakes,
     createdAt: Number(r.created_at),

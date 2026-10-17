@@ -1,58 +1,5 @@
+/** Сложность «Первых букв»: 1 — слова видны, 2 — видны не все, 3 — видны только пробелы */
 export type Difficulty = 1 | 2 | 3
-export type Group = 1 | 2 | 3
-
-export type ExerciseId =
-  | 'revealTap'
-  | 'partialHidden'
-  | 'firstLetters'
-  | 'fillGaps'
-  | 'orderBlocks'
-  | 'fullInput'
-  | 'nextLine'
-  | 'findError'
-  | 'lineEnding'
-
-export interface TextItem {
-  /** Локальный числовой id (в адресах страниц) */
-  id?: number
-  /** Глобальный id для синхронизации между устройствами */
-  uid: string
-  title: string
-  content: string
-  createdAt: number
-  /** Уровень освоения 1–7 */
-  level: number
-  /** Очки, набранные на текущем уровне */
-  levelPoints: number
-  /** Когда уровень менялся последний раз (начало окна для проверки условий) */
-  levelChangedAt: number
-  /** Когда последний раз был повышен уровень (null — ещё ни разу) */
-  lastLevelUpAt: number | null
-  /** Когда пора повторять */
-  nextReviewAt: number
-  /** Когда запись менялась последний раз (для синхронизации: побеждает более новая) */
-  updatedAt: number
-  /** Когда текст удалили (запись остаётся до отправки в облако) */
-  deletedAt?: number | null
-  /** 1 — есть изменения, ещё не отправленные в облако */
-  dirty?: 0 | 1
-}
-
-export interface Attempt {
-  id?: number
-  /** Глобальный id попытки (попытки не меняются, при синхронизации только добавляются) */
-  uid: string
-  textId: number
-  /** uid текста, к которому относится попытка */
-  textUid: string
-  exercise: ExerciseId
-  difficulty: Difficulty
-  /** Точность 0–100 */
-  score: number
-  points: number
-  createdAt: number
-  dirty?: 0 | 1
-}
 
 /** Состояние запоминания одного стиха. Ключ: rst:mat:5:7 */
 export interface VerseState {
@@ -62,9 +9,9 @@ export interface VerseState {
   chapter: number
   verse: number
   addedAt: number
-  /** Сила запоминания 0–6: насколько хорошо стих знают сейчас; 0 — стих только добавлен */
+  /** Сила запоминания 0–7: насколько хорошо стих знают сейчас; 0 — стих только добавлен, 7 — выучен */
   strength: number
-  /** Стадия повторения 0–6: расписание 1, 3, 7, 14, 30, 60 дней; растёт при успешном повторении в срок */
+  /** Стадия повторения 0–6: число пройденных циклов; циклы приходятся на дни 0, 1, 3, 7, 14, 30, 60 */
   stage: number
   nextReviewAt: number
   /** Когда сила росла в последний раз */
@@ -72,14 +19,14 @@ export interface VerseState {
   lastPracticedAt: number | null
   /** Результат последнего упражнения по этому стиху, 0–100 */
   lastScore: number | null
-  /** Сколько раз сила падала */
+  /** Сколько раз стадия падала */
   lapses: number
   updatedAt: number
   deletedAt?: number | null
   dirty?: 0 | 1
 }
 
-/** Запись о результате упражнения по стиху (журнал для опыта и статистики; только добавляется) */
+/** Запись о результате упражнения по стиху (журнал для опыта; только добавляется) */
 export interface VerseReview {
   id?: number
   uid: string
@@ -94,14 +41,10 @@ export interface VerseReview {
   dirty?: 0 | 1
 }
 
-export type LessonType = 'regular' | 'review' | 'test'
-
-/** Пройденный (или пропущенный) урок на пути. Содержимое уроков не хранится: оно собирается заново, когда урок начинают. */
+/** Пройденный урок. Содержимое не хранится: урок собирается заново, когда его начинают или повторяют. */
 export interface LessonRecord {
   id?: number
   uid: string
-  type: LessonType
-  status: 'done' | 'skipped'
   /** Стихи, по которым был урок (нужны, чтобы повторить его позже) */
   verseKeys: string[]
   xp: number

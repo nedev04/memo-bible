@@ -3,13 +3,11 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { loadBook } from '../bible/bible'
 import { formatRange, parseKey, TRANSLATION } from '../bible/refs'
 import { liveLessons, liveVerses, recentWhereBooks, recordVerseResult, saveLesson } from '../db/db'
-import { patternType, planOfType, resolveType } from '../lessons/generator'
+import { planLesson } from '../lessons/generator'
 import LessonRunner, { type LessonSummary } from '../lessons/LessonRunner'
 import { stepTier, type LessonStep, type StepOutcome, type StepResult, type VerseText } from '../lessons/types'
-import type { LessonType } from '../types'
 
 interface Loaded {
-  type: LessonType
   steps: LessonStep[]
   texts: Map<string, VerseText>
   replay: boolean
@@ -51,24 +49,17 @@ export default function LessonPage() {
     ;(async () => {
       try {
         const [verses, lessons, recentWhere] = await Promise.all([liveVerses(), liveLessons(), recentWhereBooks()])
-        const now = Date.now()
-        let type: LessonType | null
         let only: Set<string> | undefined
         if (replayUid) {
           const l = lessons.find((x) => x.uid === replayUid)
           if (!l || l.verseKeys.length === 0) return alive && setState('empty')
-          type = l.type
           only = new Set(l.verseKeys)
-        } else {
-          type = resolveType(patternType(lessons.length), verses, now)
         }
-        if (!type) return alive && setState('empty')
-
-        const steps = planOfType(type, verses, now, Math.random, only, { recentWhere })
+        const steps = planLesson(verses, Date.now(), Math.random, only, { recentWhere })
         if (steps.length === 0) return alive && setState('empty')
         const texts = await loadTexts([...new Set(steps.flatMap((s) => s.verseKeys))])
         const playable = steps.filter((s) => s.verseKeys.every((k) => texts.has(k)))
-        if (alive) setState(playable.length === 0 ? 'error' : { type, steps: playable, texts, replay: !!replayUid })
+        if (alive) setState(playable.length === 0 ? 'error' : { steps: playable, texts, replay: !!replayUid })
       } catch {
         if (alive) setState('error')
       }
@@ -91,8 +82,8 @@ export default function LessonPage() {
   }
 
   function onFinish(summary: LessonSummary) {
-    if (state === 'loading' || state === 'empty' || state === 'error' || state.replay) return // повтор в путь не записывается
-    saving.current = saveLesson({ type: state.type, status: 'done', verseKeys: summary.keys, xp: summary.xp, mistakes: summary.mistakes })
+    if (state === 'loading' || state === 'empty' || state === 'error' || state.replay) return // повтор урока в историю не записывается
+    saving.current = saveLesson({ verseKeys: summary.keys, xp: summary.xp, mistakes: summary.mistakes })
   }
 
   async function another() {
@@ -131,7 +122,6 @@ export default function LessonPage() {
   return (
     <LessonRunner
       key={`${round}:${replayUid ?? ''}`}
-      type={state.type}
       steps={state.steps}
       texts={state.texts}
       record={record}

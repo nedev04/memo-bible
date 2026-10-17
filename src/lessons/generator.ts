@@ -2,7 +2,7 @@ import { bookOrder } from '../bible/books'
 import { compareVerses } from '../bible/refs'
 import { shuffle, type Rng } from '../logic/exercises'
 import { isDue, needsAttention } from '../logic/mastery'
-import type { LessonType, VerseState } from '../types'
+import type { VerseState } from '../types'
 import type { LessonStep, StepSettings } from './types'
 
 const MAX_VERSES = 4
@@ -67,47 +67,17 @@ export function gapSettings(strength: number): StepSettings {
   return { blanks: 3, options: 5 }
 }
 
-/** Ввод по памяти: чем сильнее стих, тем меньше слов подсказано. С силы 4 — чистый лист. */
-export function typingVisiblePct(strength: number): number {
-  if (strength <= 2) return 60
-  if (strength === 3) return 35
-  return 0
-}
-
-// ---------- Какие уроки бывают ----------
-
-/** Порядок типов уроков на пути (по номеру урока): два обычных, закрепление, обычный, тест */
-const PATTERN: LessonType[] = ['regular', 'regular', 'review', 'regular', 'test']
-
-/** Какой тип урока «по плану» стоит на этом месте пути (index — сколько уроков уже пройдено или пропущено) */
-export const patternType = (index: number): LessonType => PATTERN[index % PATTERN.length]
-
-/** Для теста нужны стихи, которые уже можно вводить по памяти хотя бы с подсказками */
-export const TEST_MIN_STRENGTH = 2
-
-export function availableTypes(all: VerseState[]): Record<LessonType, boolean> {
-  return {
-    regular: all.length > 0,
-    review: all.some((v) => v.strength >= 1),
-    test: all.some((v) => v.strength >= TEST_MIN_STRENGTH),
-  }
-}
+/** Для ввода по памяти нужны стихи, которые уже можно вводить хотя бы с подсказками */
+export const TYPING_MIN_STRENGTH = 2
 
 /**
- * Тип урока с учётом того, что реально можно провести сейчас.
- * Обычный урок без нового материала и без стихов к повторению превращается в закрепление;
- * тест без достаточно выученных стихов — в закрепление или обычный урок. null — стихов нет совсем.
+ * Ввод по памяти: сколько процентов слов уже стоит на месте. Чем сильнее стих, тем меньше подсказок
+ * (с силы 4 — чистый лист), а несколько стихов подряд вводить труднее, поэтому подсказок у них меньше.
  */
-export function resolveType(preferred: LessonType, all: VerseState[], now: number): LessonType | null {
-  if (all.length === 0) return null
-  const pool = lessonPool(all, now)
-  const can = availableTypes(pool)
-  if (preferred === 'regular') {
-    const hasWork = pool.some((v) => v.strength === 0 || isDue(v, now) || needsAttention(v))
-    return hasWork || !can.review ? 'regular' : 'review'
-  }
-  if (preferred === 'review') return can.review ? 'review' : 'regular'
-  return can.test ? 'test' : can.review ? 'review' : 'regular'
+export function typingVisiblePct(strength: number, count = 1): number {
+  const base = strength <= 2 ? 60 : strength === 3 ? 35 : 0
+  const factor = count >= 3 ? 0.35 : count === 2 ? 0.6 : 1
+  return Math.round(base * factor)
 }
 
 // ---------- Подбор стихов ----------
@@ -169,37 +139,6 @@ export function pickVerses(verses: VerseState[], now: number): VerseState[] {
     }
   }
   return list.sort(byBible)
-}
-
-/**
- * Вес стиха для урока закрепления. Выше у стихов с недавней ошибкой, которые пора повторять,
- * которые недавно начали учить и которые слабее; твёрдо выученные, которым ещё не пора, попадаются редко.
- */
-export function reviewWeight(v: VerseState, now: number): number {
-  let w = 1
-  if (needsAttention(v)) w += 4
-  if (isDue(v, now)) w += 3
-  if (now - v.addedAt < 7 * DAY) w += 2
-  w += Math.max(0, 6 - v.strength) * 0.6
-  if (v.strength >= 5 && !isDue(v, now)) w *= 0.3
-  return w
-}
-
-/**
- * Стихи для закрепления: сначала выбирается «опорный» (чем нужнее, тем вероятнее), затем остальные,
- * причём вероятность быстро падает с расстоянием до опорного. Так отрывок повторяется кусками, а не вразброс (но без жёстких рамок).
- */
-export function pickReviewVerses(verses: VerseState[], now: number, rng: Rng = Math.random): VerseState[] {
-  const pool = verses.filter((v) => v.strength >= 1)
-  if (pool.length === 0) return []
-  const anchor = weightedSample(pool, (v) => reviewWeight(v, now), 1, rng)[0]
-  const others = weightedSample(
-    pool.filter((v) => v.key !== anchor.key),
-    (v) => reviewWeight(v, now) / Math.pow(1 + distance(anchor, v) / 3, 3),
-    Math.min(MAX_VERSES, pool.length) - 1,
-    rng,
-  )
-  return [anchor, ...others].sort(byBible)
 }
 
 /** Подряд идущие стихи после данного (не больше трёх), которые тоже учатся и уже не новые */
@@ -286,16 +225,57 @@ function easyPractice(v: VerseState, rng: Rng, ctx: PlanContext): Candidate[] {
 
 const newContext = (ctx?: PlanContext): PlanContext => ({ recentWhere: [...(ctx?.recentWhere ?? [])] })
 
+/** Сколько стихов подряд вводить по памяти: чаще один, иногда два, реже три */
+export function pickTypingCount(rng: Rng = Math.random): 1 | 2 | 3 {
+  const r = rng()
+  return r < 0.5 ? 1 : r < 0.8 ? 2 : 3
+}
+
+/** Вес стиха при выборе того, который вводить по памяти: нужнее тем, кому пора повторяться и кто на средней силе */
+function typingWeight(v: VerseState, now: number, inLesson: boolean): number {
+  let w = 1
+  if (isDue(v, now)) w += 3
+  if (needsAttention(v)) w += 2
+  if (v.strength >= TYPING_MIN_STRENGTH && v.strength < TOP_STRENGTH) w += 2 // именно им ввод по памяти поднимает силу
+  if (inLesson) w += 3 // предпочитаем стихи, по которым идёт этот урок
+  if (isTop(v)) w *= 0.3
+  return w
+}
+
 /**
- * Обычный урок. Новые стихи: сначала знакомство (открытие, скрытый текст), затем несколько несложных упражнений
- * вперемешку по всем новым стихам. Затем повторение стихов, которые уже учатся (по порядку Библии).
+ * Ввод по памяти: одно задание на урок. Берётся один стих или несколько подряд (до трёх). Чем слабее стих,
+ * тем больше слов подсказано; с силы 4 текст вводится с чистого листа.
  */
-export function planRegular(
+function typingStep(base: VerseState[], focus: Set<string>, now: number, rng: Rng): Candidate | null {
+  const eligible = base.filter((v) => v.strength >= TYPING_MIN_STRENGTH)
+  if (eligible.length === 0) return null
+  const anchor = weightedSample(eligible, (v) => typingWeight(v, now, focus.has(v.key)), 1, rng)[0]
+
+  const want = pickTypingCount(rng)
+  const run: VerseState[] = [anchor]
+  for (const next of followingVerses(anchor, base)) {
+    if (run.length >= want || next.strength < TYPING_MIN_STRENGTH) break
+    run.push(next)
+  }
+  const weakest = Math.min(...run.map((v) => v.strength))
+  return {
+    kind: 'typing',
+    verseKeys: run.map((v) => v.key),
+    settings: { visiblePct: typingVisiblePct(weakest, run.length) },
+  }
+}
+
+/**
+ * Урок. Новые стихи вводятся по порядку Библии (знакомство, затем несколько несложных упражнений вперемешку),
+ * затем повторение тех, что уже учатся. В конце один раз за урок — ввод по памяти одного, двух или трёх стихов подряд.
+ * only — повтор прошлого урока: берутся только эти стихи.
+ */
+export function planLesson(
   all: VerseState[], now: number, rng: Rng = Math.random, only?: Set<string>, context?: PlanContext,
 ): LessonStep[] {
   const ctx = newContext(context)
-  const pool = only ? all : lessonPool(all, now)
-  const picked = only ? restrict(all, only).sort(byBible).slice(0, MAX_VERSES) : pickVerses(pool, now)
+  const pool = only ? restrict(all, only) : lessonPool(all, now)
+  const picked = only ? [...pool].sort(byBible).slice(0, MAX_VERSES) : pickVerses(pool, now)
   const fresh = picked.filter((x) => x.strength === 0)
   const out: Candidate[] = []
   for (const v of fresh) {
@@ -304,66 +284,8 @@ export function planRegular(
   }
   out.push(...shuffle(fresh.flatMap((v) => easyPractice(v, rng, ctx)), rng))
   for (const v of picked.filter((x) => x.strength > 0)) out.push(...reviewSteps(v, pool, rng, now, ctx))
+
+  const typing = typingStep(pool, new Set(picked.map((v) => v.key)), now, rng)
+  if (typing) out.push(typing)
   return toSteps(out)
 }
-
-/** Урок закрепления: только уже начатые стихи, без нового материала */
-export function planReview(
-  all: VerseState[], now: number, rng: Rng = Math.random, only?: Set<string>, context?: PlanContext,
-): LessonStep[] {
-  const ctx = newContext(context)
-  const base = only ? all : lessonPool(all, now)
-  const picked = only
-    ? restrict(base.filter((v) => v.strength >= 1), only).sort(byBible).slice(0, MAX_VERSES)
-    : pickReviewVerses(base, now, rng)
-  return toSteps(picked.flatMap((v) => reviewSteps(v, base, rng, now, ctx)))
-}
-
-/**
- * Тестовый урок: одно большое задание, ввод по памяти. Берётся стих, который уже можно вводить (сила не ниже 2),
- * а если рядом учатся соседние такие же стихи, то до трёх стихов подряд. Чем слабее стих, тем больше слов подсказано;
- * с силы 4 текст вводится с чистого листа.
- */
-export function planTest(all: VerseState[], now: number, rng: Rng = Math.random, only?: Set<string>): LessonStep[] {
-  const base = only ? all : lessonPool(all, now)
-  const pool = restrict(base, only).filter((v) => v.strength >= TEST_MIN_STRENGTH)
-  if (pool.length === 0) return []
-
-  let chosen: VerseState[]
-  if (only) {
-    chosen = pool.sort(byBible).slice(0, 3)
-  } else {
-    const anchor = weightedSample(
-      pool,
-      (v) => 1 + (isDue(v, now) ? 3 : 0) + (needsAttention(v) ? 2 : 0) + 0.5 * v.strength,
-      1,
-      rng,
-    )[0]
-    const run: VerseState[] = []
-    for (const next of followingVerses(anchor, base)) {
-      if (next.strength < TEST_MIN_STRENGTH || run.length >= 2) break
-      run.push(next)
-    }
-    chosen = [anchor, ...run]
-  }
-
-  const keys = chosen.map((v) => v.key)
-  const weakest = Math.min(...chosen.map((v) => v.strength))
-  return [{ id: `typing:${keys.join('+')}:0`, kind: 'typing', verseKeys: keys, settings: { visiblePct: typingVisiblePct(weakest) } }]
-}
-
-export function planOfType(
-  type: LessonType,
-  all: VerseState[],
-  now: number,
-  rng: Rng = Math.random,
-  only?: Set<string>,
-  context?: PlanContext,
-): LessonStep[] {
-  if (type === 'review') return planReview(all, now, rng, only, context)
-  if (type === 'test') return planTest(all, now, rng, only)
-  return planRegular(all, now, rng, only, context)
-}
-
-/** Прежнее название: обычный урок */
-export const planLesson = planRegular

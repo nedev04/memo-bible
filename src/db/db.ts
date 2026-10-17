@@ -1,15 +1,12 @@
 import Dexie, { type Table, type Transaction } from 'dexie'
 import { uuid } from '../lib/uuid'
-import type { BackupData } from '../logic/backup'
 import { getSyncUserId } from '../sync/syncMeta'
 import type { VerseRef } from '../bible/types'
 import { parseKey, TRANSLATION, verseKey } from '../bible/refs'
 import { applyVerseResult, xpFor, type Tier } from '../logic/mastery'
-import type { Attempt, LessonRecord, LessonType, TextItem, VerseReview, VerseState } from '../types'
+import type { LessonRecord, VerseReview, VerseState } from '../types'
 
 class AppDB extends Dexie {
-  texts!: Table<TextItem, number>
-  attempts!: Table<Attempt, number>
   verses!: Table<VerseState, string>
   reviews!: Table<VerseReview, number>
   lessons!: Table<LessonRecord, number>
@@ -65,7 +62,7 @@ class AppDB extends Dexie {
           v.lapses ??= 0
         }),
       )
-    // v5: история уроков (путь на главной)
+    // v5: история уроков
     this.version(5).stores({
       lessons: '++id, uid, createdAt, dirty',
     })
@@ -77,6 +74,8 @@ class AppDB extends Dexie {
           if (typeof v.stage !== 'number') v.stage = typeof v.strength === 'number' ? v.strength : 0
         }),
       )
+    // v7: режим «свои тексты» убран из приложения, его таблицы удаляются
+    this.version(7).stores({ texts: null, attempts: null })
   }
 }
 
@@ -93,25 +92,6 @@ const isSyncTx = (tx: Transaction | undefined) => !!tx && !!(tx as unknown as { 
 function notifyChanged() {
   if (typeof window !== 'undefined') window.dispatchEvent(new Event('memo:changed'))
 }
-
-db.texts.hook('creating', (_key, obj, tx) => {
-  if (isSyncTx(tx)) return
-  obj.uid ||= uuid()
-  obj.updatedAt = Date.now()
-  obj.dirty = 1
-  notifyChanged()
-})
-db.texts.hook('updating', (_mods, _key, _obj, tx) => {
-  if (isSyncTx(tx)) return
-  notifyChanged()
-  return { updatedAt: Date.now(), dirty: 1 }
-})
-db.attempts.hook('creating', (_key, obj, tx) => {
-  if (isSyncTx(tx)) return
-  obj.uid ||= uuid()
-  obj.dirty = 1
-  notifyChanged()
-})
 
 db.verses.hook('creating', (_key, obj, tx) => {
   if (isSyncTx(tx)) return
@@ -141,89 +121,28 @@ db.lessons.hook('creating', (_key, obj, tx) => {
 
 // ---------- Запросы ----------
 
-/** Тексты без удалённых (удалённые некоторое время хранятся как «надгробия» до отправки в облако) */
-export const liveTexts = () => db.texts.filter((t) => !t.deletedAt).toArray()
-
-export async function getLiveText(id: number): Promise<TextItem | undefined> {
-  const t = await db.texts.get(id)
-  return t && !t.deletedAt ? t : undefined
-}
-
-export const countLiveTexts = async () =>
-  (await db.texts.filter((t) => !t.deletedAt).count()) + (await db.verses.filter((v) => !v.deletedAt).count())
-
-/**
- * Удаление текста. Если устройство синхронизируется, запись остаётся с пометкой deletedAt,
- * чтобы удаление дошло до облака и других устройств; иначе удаляем сразу.
- */
-export async function deleteText(id: number) {
-  await db.transaction('rw', db.texts, db.attempts, async () => {
-    await db.attempts.where('textId').equals(id).delete()
-    if (getSyncUserId()) await db.texts.update(id, { deletedAt: Date.now() })
-    else await db.texts.delete(id)
-  })
-}
+export const countLiveVerses = () => db.verses.filter((v) => !v.deletedAt).count()
 
 async function removeEverythingInTx() {
-  await db.attempts.clear()
   if (getSyncUserId()) {
+    // Для синхронизируемого устройства стихи остаются с пометкой удаления, чтобы она дошла до облака и других устройств
     const now = Date.now()
-    await db.texts.filter((t) => !t.deletedAt).modify({ deletedAt: now })
     await db.verses.filter((v) => !v.deletedAt).modify({ deletedAt: now })
   } else {
-    await db.texts.clear()
     await db.verses.clear()
     await db.reviews.clear()
   }
   await db.lessons.clear()
 }
 
-export async function exportAll(): Promise<{ texts: TextItem[]; attempts: Attempt[]; verses: VerseState[] }> {
-  const [texts, attempts, verses] = await Promise.all([liveTexts(), db.attempts.toArray(), liveVerses()])
-  return { texts, attempts, verses }
-}
-
-/**
- * replace — убрать текущие тексты и загрузить копию;
- * merge — добавить тексты из копии к существующим (id пересоздаются, попытки привязываются к новым).
- */
-export async function importBackup(data: BackupData, mode: 'replace' | 'merge') {
-  await db.transaction('rw', db.texts, db.attempts, db.verses, async () => {
-    if (mode === 'replace') await removeEverythingInTx()
-    const now = Date.now()
-    const map = new Map<number, { id: number; uid: string }>()
-    for (const t of data.texts) {
-      const { id, ...rest } = t
-      const uid = uuid()
-      map.set(id, { id: await db.texts.add({ ...rest, uid, updatedAt: now }), uid })
-    }
-    await db.attempts.bulkAdd(
-      data.attempts.map((a) => {
-        const m = map.get(a.textId)!
-        return { ...a, uid: uuid(), textId: m.id, textUid: m.uid }
-      }),
-    )
-    // Стихи: ключ стиха одинаков на всех устройствах, поэтому при слиянии побеждает более «сильный» прогресс
-    for (const v of data.verses) {
-      const existing = await db.verses.get(v.key)
-      if (!existing) await db.verses.add({ ...v, updatedAt: now })
-      else if (existing.deletedAt || v.strength > existing.strength) {
-        await db.verses.put({ ...v, updatedAt: now, deletedAt: null })
-      }
-    }
-  })
-}
-
 /** Удалить все данные. Для синхронизируемого устройства удаление дойдёт и до облака. */
 export async function clearAll() {
-  await db.transaction('rw', db.texts, db.attempts, db.verses, db.reviews, db.lessons, removeEverythingInTx)
+  await db.transaction('rw', db.verses, db.reviews, db.lessons, removeEverythingInTx)
 }
 
 /** Стереть всё локально, не затрагивая облако (при смене аккаунта на устройстве) */
 export async function wipeLocal() {
-  await db.transaction('rw', db.texts, db.attempts, db.verses, db.reviews, db.lessons, async () => {
-    await db.attempts.clear()
-    await db.texts.clear()
+  await db.transaction('rw', db.verses, db.reviews, db.lessons, async () => {
     await db.verses.clear()
     await db.reviews.clear()
     await db.lessons.clear()
@@ -296,16 +215,10 @@ export async function recordVerseResult(
 
 // ---------- Уроки ----------
 
-/** Пройденные и пропущенные уроки по порядку */
+/** Пройденные уроки по порядку */
 export const liveLessons = () => db.lessons.orderBy('createdAt').toArray()
 
-export async function saveLesson(input: {
-  type: LessonType
-  status: 'done' | 'skipped'
-  verseKeys: string[]
-  xp: number
-  mistakes: number
-}) {
+export async function saveLesson(input: { verseKeys: string[]; xp: number; mistakes: number }) {
   await db.lessons.add({ uid: uuid(), ...input, createdAt: Date.now() })
 }
 

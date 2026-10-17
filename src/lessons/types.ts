@@ -2,7 +2,6 @@ import type { Tier } from '../logic/mastery'
 
 export type ExerciseKind = 'reveal' | 'partial' | 'fillGaps' | 'assemble' | 'whereWritten' | 'orderParts' | 'typing' | 'firstLetters'
 
-export type { LessonType } from '../types'
 
 export const KIND_TITLE: Record<ExerciseKind, string> = {
   reveal: 'Откройте стих по частям',

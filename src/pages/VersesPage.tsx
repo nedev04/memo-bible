@@ -6,8 +6,7 @@ import { getBook } from '../bible/books'
 import { formatRange, TRANSLATION } from '../bible/refs'
 import { liveVerses, removeVerses } from '../db/db'
 import { buildLibrary, levelCounts, type LibraryGroup } from '../logic/library'
-import { isDue, STRENGTH_LABEL, type StrengthGroup } from '../logic/mastery'
-import { dueLabel } from '../logic/progress'
+import { dueLabel, isDue, STRENGTH_LABEL, type StrengthGroup } from '../logic/mastery'
 
 type Filter = 'all' | StrengthGroup
 
@@ -137,10 +136,6 @@ export default function VersesPage() {
           </ul>
         </section>
       ))}
-
-      <p className="muted-block">
-        <Link to="/texts">Свои тексты (прежний режим)</Link>
-      </p>
     </>
   )
 }

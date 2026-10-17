@@ -4,8 +4,8 @@ import { DAY } from '../logic/config'
 import { flattenWords, splitIntoPieces } from '../logic/exercises'
 import { buildVerseGaps } from './gaps'
 import {
-  availableTypes, distance, followingVerses, gapSettings, partialSettings, patternType, pickReviewVerses, pickVerses,
-  isTop, lessonPool, planLesson, planOfType, planReview, planTest, resolveType, reviewWeight, shouldSkipWhere, typingVisiblePct, weightedSample,
+  distance, followingVerses, gapSettings, isTop, lessonPool, partialSettings, pickTypingCount, pickVerses, planLesson,
+  shouldSkipWhere, typingVisiblePct, weightedSample,
 } from './generator'
 import { applySliderMask, makeRanks, pickVisibleWords } from './mask'
 import { stepTier, type LessonStep } from './types'
@@ -33,7 +33,8 @@ function seeded(seed: number) {
 
 const TEXT = 'Блаженны милостивые, ибо они помилованы будут'
 const kinds = (steps: { kind: string }[]) => steps.map((s) => s.kind)
-
+/** Шаги урока без ввода по памяти (он всегда последний) */
+const withoutTyping = (steps: LessonStep[]) => steps.filter((s) => s.kind !== 'typing')
 
 describe('подбор стихов', () => {
   it('новые вводятся строго по порядку Библии, не больше двух за урок', () => {
@@ -83,151 +84,6 @@ describe('подбор стихов', () => {
   })
 })
 
-describe('план урока', () => {
-  it('новый стих: знакомство, затем три несложных упражнения в свободном порядке', () => {
-    const orders = new Set<string>()
-    for (let i = 1; i <= 30; i++) {
-      const steps = planLesson([verse(1)], T0, seeded(i))
-      expect(kinds(steps).slice(0, 2)).toEqual(['reveal', 'partial'])
-      const practice = steps.slice(2)
-      expect(practice).toHaveLength(3)
-      practice.forEach((s) => expect(['fillGaps', 'assemble', 'whereWritten', 'firstLetters']).toContain(s.kind))
-      practice.forEach((s) => {
-        if (s.kind === 'assemble') expect(s.settings.pieces).toBe(4)
-        if (s.kind === 'whereWritten') expect(s.settings.levels).toBe(1)
-        if (s.kind === 'firstLetters') expect(s.settings.hintLevel).toBe(1)
-      })
-      expect(new Set(steps.map((s) => s.id)).size).toBe(steps.length)
-      orders.add(kinds(practice).join())
-    }
-    expect(orders.size).toBeGreaterThan(1)
-  })
-
-  it('несколько новых стихов: сначала знакомство со всеми по порядку, потом упражнения вперемешку', () => {
-    const steps = planLesson([verse(2), verse(1)], T0, seeded(4))
-    expect(steps.slice(0, 4).map((s) => `${s.kind}:${s.verseKeys[0].slice(-1)}`)).toEqual(['reveal:1', 'partial:1', 'reveal:2', 'partial:2'])
-    const practice = steps.slice(4)
-    expect(practice).toHaveLength(6)
-    expect(new Set(practice.map((s) => s.verseKeys[0]))).toEqual(new Set(['rst:mat:5:1', 'rst:mat:5:2']))
-  })
-
-  it('повторение: «главное» упражнение последним, его сложности хватает для роста силы', () => {
-    const gates = (strength: number) => {
-      const found = new Set<string>()
-      for (let i = 1; i <= 40; i++) {
-        const steps = planLesson([verse(1, { strength, stage: 1, nextReviewAt: T0 + 5 * DAY })], T0, seeded(i))
-        const gate = steps[steps.length - 1]
-        found.add(gate.kind + (gate.kind === 'firstLetters' ? `:${gate.settings.hintLevel}` : gate.kind === 'assemble' ? `:${gate.settings.pieces}` : ''))
-      }
-      return [...found].sort()
-    }
-    expect(gates(1)).toEqual(['fillGaps'])
-    expect(gates(2)).toEqual(['assemble:6', 'firstLetters:2'])
-    expect(gates(3)).toEqual(['assemble:9', 'firstLetters:3'])
-    expect(gates(5)).toEqual(['fillGaps', 'firstLetters:3'])
-  })
-
-  it('«главные» упражнения для роста силы с 2 по 4 имеют сложность 2, для роста с 0–1 — 1', () => {
-    const tierOfGate = (strength: number) => {
-      const tiers = new Set<number | null>()
-      for (let i = 1; i <= 40; i++) {
-        const steps = planLesson([verse(1, { strength, stage: 1, nextReviewAt: T0 + 5 * DAY })], T0, seeded(i))
-        tiers.add(stepTier(steps[steps.length - 1]))
-      }
-      return [...tiers]
-    }
-    expect(tierOfGate(1)).toEqual([1])
-    expect(tierOfGate(2)).toEqual([2])
-    expect(tierOfGate(3)).toEqual([2])
-  })
-
-  it('стиху, которому подошёл срок, достаётся больше упражнений', () => {
-    const notDue = planLesson([verse(1, { strength: 3, stage: 3, nextReviewAt: T0 + 3 * DAY })], T0, seeded(3))
-    const due = planLesson([verse(1, { strength: 3, stage: 3, nextReviewAt: T0 - DAY })], T0, seeded(3))
-    expect(notDue).toHaveLength(2)
-    expect(due).toHaveLength(3)
-  })
-
-  it('если рядом учатся соседние стихи, на сильных стихах иногда предлагается «Расставьте части»', () => {
-    const verses = [
-      verse(7, { strength: 3, nextReviewAt: T0 - DAY }),
-      verse(8, { strength: 1, nextReviewAt: T0 + 5 * DAY }),
-      verse(9, { strength: 2, nextReviewAt: T0 + 5 * DAY }),
-      verse(10, { strength: 0 }),
-    ]
-    expect(followingVerses(verses[0], verses).map((v) => v.verse)).toEqual([8, 9])
-    const found: LessonStep[] = []
-    for (let i = 1; i <= 40; i++) {
-      found.push(...planLesson(verses.slice(0, 3), T0, seeded(i)).filter((s) => s.kind === 'orderParts'))
-    }
-    expect(found.length).toBeGreaterThan(0)
-    found.forEach((s) => expect(s.verseKeys).toEqual(['rst:mat:5:7', 'rst:mat:5:8', 'rst:mat:5:9']))
-  })
-
-  it('сложность растёт с силой стиха', () => {
-    expect(partialSettings(0).wordPct!).toBeLessThan(partialSettings(5).wordPct!)
-    expect(partialSettings(6).wordPct).toBe(50)
-    expect(partialSettings(6).letterPct!).toBeLessThanOrEqual(100)
-    expect(gapSettings(0).blanks).toBe(1)
-    expect(gapSettings(6).options).toBe(5)
-  })
-
-  it('без стихов урока нет', () => {
-    expect(planLesson([], T0)).toEqual([])
-  })
-})
-
-describe('стихи высшего уровня попадаются редко', () => {
-  const top = (n: number, nextReviewAt: number) => verse(n, { strength: 6, stage: 4, nextReviewAt })
-  const weak = (n: number) => verse(n, { strength: 2, stage: 1, nextReviewAt: T0 + DAY })
-
-  it('пока есть слабые стихи, сильный без срока сегодня в урок не берётся', () => {
-    const verses = [top(1, T0 + 5 * DAY), top(2, T0 + 9 * DAY), weak(10), weak(11)]
-    expect(isTop(verses[0])).toBe(true)
-    expect(lessonPool(verses, T0).map((v) => v.verse)).toEqual([10, 11])
-    for (let i = 1; i <= 30; i++) {
-      for (const type of ['regular', 'review', 'test'] as const) {
-        const steps = planOfType(type, verses, T0, seeded(i))
-        steps.forEach((s) => s.verseKeys.forEach((k) => expect(['rst:mat:5:10', 'rst:mat:5:11']).toContain(k)))
-      }
-    }
-  })
-
-  it('сильный стих, которому сегодня пора повторяться (или пора было раньше), попадает в урок, но с малым числом упражнений', () => {
-    const verses = [top(1, T0 - 3 * DAY), weak(10), weak(11)]
-    expect(lessonPool(verses, T0).map((v) => v.verse)).toEqual([1, 10, 11])
-    let seen = 0
-    for (let i = 1; i <= 30; i++) {
-      const steps = planReview(verses, T0, seeded(i))
-      const own = steps.filter((s) => s.verseKeys.length === 1 && s.verseKeys[0] === 'rst:mat:5:1')
-      expect(own.length).toBeLessThanOrEqual(2)
-      if (own.length > 0) seen++
-    }
-    expect(seen).toBeGreaterThan(0)
-  })
-
-  it('если слабых стихов не осталось, берутся все, но стих, которому пора повторяться, попадает обязательно', () => {
-    const verses = [
-      top(1, T0 + 8 * DAY), top(2, T0 - DAY), top(3, T0 + 9 * DAY),
-      top(4, T0 + 12 * DAY), verse(5, { strength: 7, stage: 4, nextReviewAt: T0 + 20 * DAY }),
-    ]
-    expect(lessonPool(verses, T0)).toHaveLength(5)
-    const picked = pickVerses(verses, T0).map((v) => v.verse)
-    expect(picked).toContain(2)
-    expect(picked.length).toBeLessThanOrEqual(3)
-  })
-
-  it('после того как сильный стих повторён и срок ушёл вперёд, он снова исчезает из уроков', () => {
-    const verses = [top(1, T0 + 14 * DAY), weak(10)]
-    expect(lessonPool(verses, T0).map((v) => v.verse)).toEqual([10])
-  })
-
-  it('тип урока определяется по доступным стихам: тест не берёт сильные стихи без срока', () => {
-    const verses = [top(1, T0 + 5 * DAY), verse(2, { strength: 1, stage: 1, nextReviewAt: T0 + DAY })]
-    expect(resolveType('test', verses, T0)).toBe('review')
-  })
-})
-
 describe('вопрос «где написано» не надоедает', () => {
   it('чем дольше подряд одна и та же книга, тем реже вопрос', () => {
     const sureTrue = () => 0
@@ -264,28 +120,6 @@ describe('вопрос «где написано» не надоедает', () 
   })
 })
 
-describe('типы уроков', () => {
-  it('порядок на пути повторяется: два обычных, закрепление, обычный, тест', () => {
-    expect([0, 1, 2, 3, 4, 5, 9].map(patternType)).toEqual(['regular', 'regular', 'review', 'regular', 'test', 'regular', 'test'])
-  })
-
-  it('нет стихов — нет урока', () => {
-    expect(resolveType('regular', [], T0)).toBeNull()
-  })
-
-  it('обычный урок без работы превращается в закрепление; тест без подходящих стихов — в закрепление или обычный', () => {
-    const calm = [verse(1, { strength: 1, nextReviewAt: T0 + 5 * DAY })]
-    expect(resolveType('regular', calm, T0)).toBe('review')
-    expect(resolveType('regular', [verse(1)], T0)).toBe('regular')
-    expect(resolveType('test', calm, T0)).toBe('review')
-    expect(resolveType('test', [verse(1)], T0)).toBe('regular')
-    expect(resolveType('test', [verse(1, { strength: 2, nextReviewAt: T0 + DAY })], T0)).toBe('test')
-    expect(resolveType('review', [verse(1)], T0)).toBe('regular')
-    expect(availableTypes([verse(1, { strength: 2 })])).toEqual({ regular: true, review: true, test: true })
-    expect(availableTypes([verse(1, { strength: 1 })]).test).toBe(false)
-  })
-})
-
 describe('выборка с весами', () => {
   it('без повторов, не больше k, вес 0 попадает в конец', () => {
     const r = weightedSample([1, 2, 3, 4], (n) => (n === 4 ? 0 : 10), 3, seeded(1))
@@ -297,68 +131,6 @@ describe('выборка с весами', () => {
     let heavy = 0
     for (let i = 0; i < 200; i++) if (weightedSample(['a', 'b'], (x) => (x === 'a' ? 9 : 1), 1, seeded(i + 1))[0] === 'a') heavy++
     expect(heavy).toBeGreaterThan(140)
-  })
-})
-
-describe('закрепление', () => {
-  it('новых стихов нет; стих с ошибкой весомее твёрдо выученного', () => {
-    const verses = [verse(1), verse(2, { strength: 2, nextReviewAt: T0 - DAY }), verse(3, { strength: 6, nextReviewAt: T0 + 30 * DAY, addedAt: T0 - 90 * DAY })]
-    const steps = planReview(verses, T0, seeded(5))
-    expect(steps.every((s) => !s.verseKeys.includes('rst:mat:5:1'))).toBe(true)
-    expect(steps.length).toBeGreaterThan(0)
-    expect(reviewWeight(verse(4, { strength: 3, lastScore: 30, nextReviewAt: T0 + DAY }), T0))
-      .toBeGreaterThan(reviewWeight(verse(5, { strength: 6, nextReviewAt: T0 + 30 * DAY, addedAt: T0 - 90 * DAY }), T0))
-  })
-
-  it('без начатых стихов плана нет', () => {
-    expect(planReview([verse(1)], T0, seeded(1))).toEqual([])
-  })
-
-  it('отрывок повторяется кусками: выбранные стихи ближе друг к другу, чем при случайном выборе', () => {
-    const verses = Array.from({ length: 30 }, (_, i) => verse(i + 1, { strength: 3, stage: 2, nextReviewAt: T0 - DAY }))
-    let spreadSum = 0
-    const runs = 60
-    for (let i = 1; i <= runs; i++) {
-      const picked = pickReviewVerses(verses, T0, seeded(i)).map((v) => v.verse)
-      expect(picked).toEqual([...picked].sort((a, b) => a - b)) // по порядку Библии
-      spreadSum += Math.max(...picked) - Math.min(...picked)
-    }
-    // случайные 4 из 30 стихов в среднем разбросаны примерно на 18; здесь вдвое плотнее
-    expect(spreadSum / runs).toBeLessThan(10)
-  })
-})
-
-describe('тест', () => {
-  it('одно задание «ввод по памяти»; чем слабее стих, тем больше слов подсказано, с силы 4 — чистый лист', () => {
-    expect([2, 3, 4, 5].map(typingVisiblePct)).toEqual([60, 35, 0, 0])
-    const steps = (s: number) => planTest([verse(7, { strength: s })], T0, seeded(1))
-    expect(steps(2)[0].settings.visiblePct).toBe(60)
-    expect(steps(3)[0].settings.visiblePct).toBe(35)
-    expect(steps(4)[0].settings.visiblePct).toBe(0)
-    expect(stepTier(steps(3)[0])).toBe(2)
-    expect(stepTier(steps(4)[0])).toBe(3)
-  })
-
-  it('несколько стихов подряд: сложность определяет самый слабый', () => {
-    const verses = [verse(7, { strength: 4 }), verse(8, { strength: 2 })]
-    const found = new Set<string>()
-    for (let i = 1; i <= 30; i++) {
-      const [step] = planTest(verses, T0, seeded(i))
-      found.add(`${step.verseKeys.join()}|${step.settings.visiblePct}`)
-    }
-    expect([...found].sort()).toEqual(['rst:mat:5:7,rst:mat:5:8|60', 'rst:mat:5:8|60'])
-  })
-
-  it('нет подходящих стихов — нет теста', () => {
-    expect(planTest([verse(1, { strength: 1 })], T0, seeded(1))).toEqual([])
-  })
-
-  it('повтор урока ограничивается теми же стихами', () => {
-    const verses = [verse(7, { strength: 4 }), verse(8, { strength: 4 })]
-    const steps = planOfType('test', verses, T0, seeded(1), new Set(['rst:mat:5:8']))
-    expect(steps[0].verseKeys).toEqual(['rst:mat:5:8'])
-    const regular = planOfType('regular', [verse(1), verse(2), verse(3, { strength: 3 })], T0, seeded(1), new Set(['rst:mat:5:2']))
-    expect(regular.every((s) => s.verseKeys.every((k) => k === 'rst:mat:5:2'))).toBe(true)
   })
 })
 
@@ -488,5 +260,210 @@ describe('разбиение на части', () => {
 
   it('разбивает по знакам препинания, если они есть рядом с серединой', () => {
     expect(splitIntoPieces(text, 2)[0].endsWith(';')).toBe(true)
+  })
+})
+
+
+describe('план урока', () => {
+  it('новый стих: знакомство, затем три несложных упражнения в свободном порядке', () => {
+    const orders = new Set<string>()
+    for (let i = 1; i <= 30; i++) {
+      const steps = planLesson([verse(1)], T0, seeded(i))
+      expect(kinds(steps).slice(0, 2)).toEqual(['reveal', 'partial'])
+      const practice = steps.slice(2)
+      expect(practice).toHaveLength(3) // ввода по памяти нет: стих ещё новый
+      practice.forEach((s) => expect(['fillGaps', 'assemble', 'whereWritten', 'firstLetters']).toContain(s.kind))
+      practice.forEach((s) => {
+        if (s.kind === 'assemble') expect(s.settings.pieces).toBe(4)
+        if (s.kind === 'whereWritten') expect(s.settings.levels).toBe(1)
+        if (s.kind === 'firstLetters') expect(s.settings.hintLevel).toBe(1)
+      })
+      expect(new Set(steps.map((s) => s.id)).size).toBe(steps.length)
+      orders.add(kinds(practice).join())
+    }
+    expect(orders.size).toBeGreaterThan(1)
+  })
+
+  it('несколько новых стихов: сначала знакомство со всеми по порядку, потом упражнения вперемешку', () => {
+    const steps = planLesson([verse(2), verse(1)], T0, seeded(4))
+    expect(steps.slice(0, 4).map((s) => `${s.kind}:${s.verseKeys[0].slice(-1)}`)).toEqual(['reveal:1', 'partial:1', 'reveal:2', 'partial:2'])
+    const practice = steps.slice(4)
+    expect(practice).toHaveLength(6)
+    expect(new Set(practice.map((s) => s.verseKeys[0]))).toEqual(new Set(['rst:mat:5:1', 'rst:mat:5:2']))
+  })
+
+  it('повторение: «главное» упражнение последним (перед вводом по памяти), его сложности хватает для роста силы', () => {
+    const gates = (strength: number) => {
+      const found = new Set<string>()
+      for (let i = 1; i <= 40; i++) {
+        const steps = withoutTyping(planLesson([verse(1, { strength, stage: 1, nextReviewAt: T0 + 5 * DAY })], T0, seeded(i)))
+        const gate = steps[steps.length - 1]
+        found.add(gate.kind + (gate.kind === 'firstLetters' ? `:${gate.settings.hintLevel}` : gate.kind === 'assemble' ? `:${gate.settings.pieces}` : ''))
+      }
+      return [...found].sort()
+    }
+    expect(gates(1)).toEqual(['fillGaps'])
+    expect(gates(2)).toEqual(['assemble:6', 'firstLetters:2'])
+    expect(gates(3)).toEqual(['assemble:9', 'firstLetters:3'])
+    expect(gates(5)).toEqual(['fillGaps', 'firstLetters:3'])
+  })
+
+  it('«главные» упражнения для роста силы с 2 по 4 имеют сложность 2, для роста с 0–1 — 1', () => {
+    const tierOfGate = (strength: number) => {
+      const tiers = new Set<number | null>()
+      for (let i = 1; i <= 40; i++) {
+        const steps = withoutTyping(planLesson([verse(1, { strength, stage: 1, nextReviewAt: T0 + 5 * DAY })], T0, seeded(i)))
+        tiers.add(stepTier(steps[steps.length - 1]))
+      }
+      return [...tiers]
+    }
+    expect(tierOfGate(1)).toEqual([1])
+    expect(tierOfGate(2)).toEqual([2])
+    expect(tierOfGate(3)).toEqual([2])
+  })
+
+  it('стиху, которому подошёл срок, достаётся больше упражнений', () => {
+    const notDue = withoutTyping(planLesson([verse(1, { strength: 3, stage: 3, nextReviewAt: T0 + 3 * DAY })], T0, seeded(3)))
+    const due = withoutTyping(planLesson([verse(1, { strength: 3, stage: 3, nextReviewAt: T0 - DAY })], T0, seeded(3)))
+    expect(notDue).toHaveLength(2)
+    expect(due).toHaveLength(3)
+  })
+
+  it('если рядом учатся соседние стихи, на сильных стихах иногда предлагается «Расставьте части»', () => {
+    const verses = [
+      verse(7, { strength: 3, nextReviewAt: T0 - DAY }),
+      verse(8, { strength: 1, nextReviewAt: T0 + 5 * DAY }),
+      verse(9, { strength: 2, nextReviewAt: T0 + 5 * DAY }),
+      verse(10, { strength: 0 }),
+    ]
+    expect(followingVerses(verses[0], verses).map((v) => v.verse)).toEqual([8, 9])
+    const found: LessonStep[] = []
+    for (let i = 1; i <= 40; i++) {
+      found.push(...planLesson(verses.slice(0, 3), T0, seeded(i)).filter((s) => s.kind === 'orderParts'))
+    }
+    expect(found.length).toBeGreaterThan(0)
+    found.forEach((s) => expect(s.verseKeys).toEqual(['rst:mat:5:7', 'rst:mat:5:8', 'rst:mat:5:9']))
+  })
+
+  it('сложность растёт с силой стиха', () => {
+    expect(partialSettings(0).wordPct!).toBeLessThan(partialSettings(5).wordPct!)
+    expect(partialSettings(6).wordPct).toBe(50)
+    expect(partialSettings(6).letterPct!).toBeLessThanOrEqual(100)
+    expect(gapSettings(0).blanks).toBe(1)
+    expect(gapSettings(6).options).toBe(5)
+  })
+
+  it('без стихов урока нет', () => {
+    expect(planLesson([], T0)).toEqual([])
+  })
+
+  it('повтор урока ограничивается теми же стихами', () => {
+    const verses = [verse(1), verse(2), verse(3, { strength: 3, stage: 2, nextReviewAt: T0 + DAY }), verse(7, { strength: 4 }), verse(8, { strength: 4 })]
+    const only = new Set(['rst:mat:5:2', 'rst:mat:5:8'])
+    for (let i = 1; i <= 20; i++) {
+      planLesson(verses, T0, seeded(i), only).forEach((s) => s.verseKeys.forEach((k) => expect(only.has(k)).toBe(true)))
+    }
+  })
+})
+
+describe('ввод по памяти внутри урока', () => {
+  const learning = (n: number, strength: number) => verse(n, { strength, stage: 2, nextReviewAt: T0 + 5 * DAY })
+  const typingOf = (steps: LessonStep[]) => steps.filter((s) => s.kind === 'typing')
+
+  it('ровно один раз за урок и в самом конце', () => {
+    const verses = [learning(7, 3), learning(8, 4), learning(20, 2), verse(30)]
+    for (let i = 1; i <= 40; i++) {
+      const steps = planLesson(verses, T0, seeded(i))
+      expect(typingOf(steps)).toHaveLength(1)
+      expect(steps[steps.length - 1].kind).toBe('typing')
+    }
+  })
+
+  it('его нет, пока нет стихов, которые можно вводить (сила ниже 2)', () => {
+    expect(typingOf(planLesson([verse(1), verse(2, { strength: 1, stage: 1, nextReviewAt: T0 + DAY })], T0, seeded(1)))).toEqual([])
+  })
+
+  it('иногда один стих, иногда два, иногда три подряд из одной главы', () => {
+    const verses = [learning(7, 3), learning(8, 3), learning(9, 3), learning(10, 3)]
+    const counts = new Set<number>()
+    for (let i = 1; i <= 100; i++) {
+      const [typing] = typingOf(planLesson(verses, T0, seeded(i)))
+      counts.add(typing.verseKeys.length)
+      const numbers = typing.verseKeys.map((k) => Number(k.split(':')[3]))
+      numbers.forEach((n, idx) => idx > 0 && expect(n).toBe(numbers[idx - 1] + 1)) // подряд, по возрастанию
+    }
+    expect([...counts].sort()).toEqual([1, 2, 3])
+  })
+
+  it('соседние стихи с силой ниже 2 в ввод по памяти не попадают', () => {
+    const verses = [learning(7, 3), verse(8, { strength: 1, stage: 1, nextReviewAt: T0 + DAY })]
+    for (let i = 1; i <= 40; i++) {
+      const [typing] = typingOf(planLesson(verses, T0, seeded(i)))
+      expect(typing.verseKeys).toEqual(['rst:mat:5:7'])
+    }
+  })
+
+  it('чем слабее стих и чем больше стихов подряд, тем меньше слов подсказано; с силы 4 — чистый лист', () => {
+    expect([[2, 1], [3, 1], [4, 1], [5, 1]].map(([s, c]) => typingVisiblePct(s, c))).toEqual([60, 35, 0, 0])
+    expect([2, 3].map((s) => typingVisiblePct(s, 2))).toEqual([36, 21])
+    expect([2, 3].map((s) => typingVisiblePct(s, 3))).toEqual([21, 12])
+    expect(typingVisiblePct(4, 3)).toBe(0)
+    expect(typingVisiblePct(2, 3)).toBeLessThan(typingVisiblePct(2, 2))
+    expect(typingVisiblePct(2, 2)).toBeLessThan(typingVisiblePct(2, 1))
+  })
+
+  it('сложность для роста силы: с подсказками — 2, с чистого листа — 3', () => {
+    const typing = (strength: number) => planLesson([learning(7, strength)], T0, seeded(1)).filter((s) => s.kind === 'typing')[0]
+    expect(typing(3).settings.visiblePct).toBe(35)
+    expect(stepTier(typing(3))).toBe(2)
+    expect(typing(4).settings.visiblePct).toBe(0)
+    expect(stepTier(typing(4))).toBe(3)
+  })
+
+  it('число стихов выбирается: чаще один, реже три', () => {
+    const counts = [1, 2, 3].map(() => 0)
+    for (let i = 1; i <= 300; i++) counts[pickTypingCount(seeded(i)) - 1]++
+    expect(counts[0]).toBeGreaterThan(counts[1])
+    expect(counts[1]).toBeGreaterThan(counts[2])
+    expect(counts[2]).toBeGreaterThan(0)
+  })
+})
+
+describe('стихи высшего уровня попадаются редко', () => {
+  const top = (n: number, nextReviewAt: number) => verse(n, { strength: 6, stage: 4, nextReviewAt })
+  const weak = (n: number) => verse(n, { strength: 2, stage: 1, nextReviewAt: T0 + DAY })
+
+  it('пока есть слабые стихи, сильный без срока сегодня в урок не берётся', () => {
+    const verses = [top(1, T0 + 5 * DAY), top(2, T0 + 9 * DAY), weak(10), weak(11)]
+    expect(isTop(verses[0])).toBe(true)
+    expect(lessonPool(verses, T0).map((v) => v.verse)).toEqual([10, 11])
+    for (let i = 1; i <= 40; i++) {
+      planLesson(verses, T0, seeded(i)).forEach((s) => s.verseKeys.forEach((k) => expect(['rst:mat:5:10', 'rst:mat:5:11']).toContain(k)))
+    }
+  })
+
+  it('сильный стих, которому пора повторяться (или пора было раньше), попадает в урок, но с малым числом упражнений', () => {
+    const verses = [top(1, T0 - 3 * DAY), weak(10), weak(11)]
+    expect(lessonPool(verses, T0).map((v) => v.verse)).toEqual([1, 10, 11])
+    for (let i = 1; i <= 40; i++) {
+      const own = withoutTyping(planLesson(verses, T0, seeded(i))).filter((s) => s.verseKeys.length === 1 && s.verseKeys[0] === 'rst:mat:5:1')
+      expect(own.length).toBe(2)
+    }
+  })
+
+  it('если слабых стихов не осталось, берутся все, но стих, которому пора повторяться, попадает обязательно', () => {
+    const verses = [
+      top(1, T0 + 8 * DAY), top(2, T0 - DAY), top(3, T0 + 9 * DAY),
+      top(4, T0 + 12 * DAY), verse(5, { strength: 7, stage: 4, nextReviewAt: T0 + 20 * DAY }),
+    ]
+    expect(lessonPool(verses, T0)).toHaveLength(5)
+    const picked = pickVerses(verses, T0).map((v) => v.verse)
+    expect(picked).toContain(2)
+    expect(picked.length).toBeLessThanOrEqual(3)
+  })
+
+  it('после того как сильный стих повторён и срок ушёл вперёд, он снова исчезает из уроков', () => {
+    const verses = [top(1, T0 + 14 * DAY), weak(10)]
+    expect(lessonPool(verses, T0).map((v) => v.verse)).toEqual([10])
   })
 })

@@ -23,7 +23,7 @@ export default function CloudSection() {
 
   // Сведения для профиля: всего опыта и число пройденных уроков
   const totalXp = useLiveQuery(async () => (await db.reviews.toArray()).reduce((n, r) => n + r.xp, 0), [])
-  const lessonCount = useLiveQuery(() => db.lessons.filter((l) => l.status === 'done').count(), [])
+  const lessonCount = useLiveQuery(() => db.lessons.filter((l) => l.verseKeys.length > 0).count(), [])
 
   if (!sync.configured) {
     return (
