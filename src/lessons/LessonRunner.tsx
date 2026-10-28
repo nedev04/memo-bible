@@ -49,9 +49,18 @@ interface Props {
   onAnother: () => void
   /** Урок завершён (вызывается один раз) */
   onFinish?: (summary: LessonSummary) => void
+  /** Повторять ли в конце упражнения с ошибками (в свободной практике нет) */
+  retries?: boolean
+  /** Подписи итогового экрана */
+  title?: string
+  anotherLabel?: string
+  closeLabel?: string
 }
 
-export default function LessonRunner({ steps, texts, record, onClose, onAnother, onFinish }: Props) {
+export default function LessonRunner({
+  steps, texts, record, onClose, onAnother, onFinish,
+  retries = true, title = 'Урок пройден', anotherLabel = 'Ещё урок', closeLabel = 'К стихам',
+}: Props) {
   const [queue, setQueue] = useState<LessonStep[]>(steps)
   const [index, setIndex] = useState(0)
   const [result, setResult] = useState<StepResult | null>(null)
@@ -90,7 +99,7 @@ export default function LessonRunner({ steps, texts, record, onClose, onAnother,
     }
     setResult(r)
     // Ошибка: то же упражнение будет ещё раз в конце урока (один раз). Ввод по памяти не повторяется: он длинный.
-    if (r.score < PASS_SCORE && !step.retry && step.kind !== 'typing') {
+    if (retries && r.score < PASS_SCORE && !step.retry && step.kind !== 'typing') {
       setMistakes((m) => m + 1)
       setQueue((q) => [...q, { ...step, id: `${step.id}:retry`, retry: true }])
     }
@@ -110,7 +119,7 @@ export default function LessonRunner({ steps, texts, record, onClose, onAnother,
     const list = [...changes.entries()]
     return (
       <div className="result lesson-done">
-        <h1>Урок пройден</h1>
+        <h1>{title}</h1>
         <p className="xp">+{xp} опыта</p>
         <p className="muted-block">{mistakes === 0 ? 'Без ошибок.' : `Ошибок: ${mistakes}.`}</p>
         {list.length > 0 && (
@@ -123,8 +132,8 @@ export default function LessonRunner({ steps, texts, record, onClose, onAnother,
           </ul>
         )}
         <div className="result-actions">
-          <button className="btn primary" onClick={onAnother}>Ещё урок</button>
-          <button className="btn ghost" onClick={onClose}>К стихам</button>
+          <button className="btn primary" onClick={onAnother}>{anotherLabel}</button>
+          <button className="btn ghost" onClick={onClose}>{closeLabel}</button>
         </div>
       </div>
     )
@@ -158,7 +167,7 @@ export default function LessonRunner({ steps, texts, record, onClose, onAnother,
             {result.score >= PASS_SCORE ? 'Верно!' : result.score >= PARTIAL_SCORE ? 'Почти верно' : 'Есть ошибки'}
           </strong>
           {result.detail && <span>{result.detail}</span>}
-          {result.score < PASS_SCORE && !step.retry && step.kind !== 'typing' && <small>Это упражнение повторится в конце урока.</small>}
+          {retries && result.score < PASS_SCORE && !step.retry && step.kind !== 'typing' && <small>Это упражнение повторится в конце урока.</small>}
           <button className="btn primary" autoFocus onClick={() => advance()}>Продолжить</button>
         </div>
       )}

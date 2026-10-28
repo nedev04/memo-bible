@@ -1,38 +1,16 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { loadBook } from '../bible/bible'
-import { formatRange, parseKey, TRANSLATION } from '../bible/refs'
-import { liveLessons, liveVerses, recentWhereBooks, recordVerseResult, saveLesson } from '../db/db'
+import { liveLessons, liveVerses, recentWhereBooks, saveLesson } from '../db/db'
 import { planLesson } from '../lessons/generator'
+import { loadTexts } from '../lessons/loadTexts'
+import { recordStep } from '../lessons/record'
 import LessonRunner, { type LessonSummary } from '../lessons/LessonRunner'
-import { stepTier, type LessonStep, type StepOutcome, type StepResult, type VerseText } from '../lessons/types'
+import type { LessonStep, VerseText } from '../lessons/types'
 
 interface Loaded {
   steps: LessonStep[]
   texts: Map<string, VerseText>
   replay: boolean
-}
-
-/** Подгружает тексты стихов (и главы целиком, из неё берутся неверные варианты ответа) */
-async function loadTexts(keys: string[]): Promise<Map<string, VerseText>> {
-  const out = new Map<string, VerseText>()
-  for (const key of keys) {
-    const p = parseKey(key)
-    if (!p) continue
-    const chapters = await loadBook(TRANSLATION, p.book)
-    const verses = chapters[p.chapter - 1] ?? []
-    const text = verses[p.verse - 1]
-    if (!text) continue
-    out.set(key, {
-      key, book: p.book, chapter: p.chapter, verse: p.verse,
-      ref: formatRange({ book: p.book, chapter: p.chapter, from: p.verse, to: p.verse }),
-      text,
-      chapterText: verses.filter(Boolean).join(' '),
-      bookChapters: chapters.length,
-      chapterVerses: verses.length,
-    })
-  }
-  return out
 }
 
 export default function LessonPage() {
@@ -66,20 +44,6 @@ export default function LessonPage() {
     })()
     return () => { alive = false }
   }, [round, replayUid])
-
-  async function record(step: LessonStep, result: StepResult): Promise<StepOutcome> {
-    const tier = stepTier(step)
-    if (result.neutral || tier === null) return { xp: 0, changes: [] }
-    let xp = 0
-    const changes: StepOutcome['changes'] = []
-    for (const key of step.verseKeys) {
-      const score = result.perVerse?.[key] ?? result.score
-      const r = await recordVerseResult(key, { exercise: step.kind, tier, score })
-      xp += r.xp
-      changes.push({ key, change: r.change })
-    }
-    return { xp, changes }
-  }
 
   function onFinish(summary: LessonSummary) {
     if (state === 'loading' || state === 'empty' || state === 'error' || state.replay) return // повтор урока в историю не записывается
@@ -124,7 +88,7 @@ export default function LessonPage() {
       key={`${round}:${replayUid ?? ''}`}
       steps={state.steps}
       texts={state.texts}
-      record={record}
+      record={recordStep}
       onClose={() => navigate('/')}
       onAnother={another}
       onFinish={onFinish}

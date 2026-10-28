@@ -2,6 +2,7 @@ import { HashRouter, Link, NavLink, Route, Routes } from 'react-router-dom'
 import BibleAddPage from './pages/BibleAddPage'
 import DataPage from './pages/DataPage'
 import LessonPage from './pages/LessonPage'
+import PracticePage from './pages/PracticePage'
 import TodayPage from './pages/TodayPage'
 import VersesPage from './pages/VersesPage'
 import { SyncProvider, useSync } from './sync/SyncProvider'
@@ -34,6 +35,7 @@ export default function App() {
             <Route path="/verses" element={<VersesPage />} />
             <Route path="/add" element={<BibleAddPage />} />
             <Route path="/lesson" element={<LessonPage />} />
+            <Route path="/practice" element={<PracticePage />} />
             <Route path="/data" element={<DataPage />} />
           </Routes>
         </main>

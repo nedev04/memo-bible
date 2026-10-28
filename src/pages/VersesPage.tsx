@@ -67,7 +67,10 @@ function GroupRow({ group, now }: { group: LibraryGroup; now: number }) {
         </small>
         <small className="vpreview">{preview ?? '…'}</small>
       </div>
-      <button className="btn ghost small" onClick={remove} aria-label={`Убрать ${label}`}>Убрать</button>
+      <div className="row-actions">
+        <Link className="btn ghost small" to={`/practice?keys=${group.keys.join(',')}`} aria-label={`Тренировать ${label}`}>Тренировать</Link>
+        <button className="btn ghost small" onClick={remove} aria-label={`Убрать ${label}`}>Убрать</button>
+      </div>
     </li>
   )
 }
