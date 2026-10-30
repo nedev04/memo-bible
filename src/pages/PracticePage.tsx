@@ -4,6 +4,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { compareVerses, formatRange, groupVerses, parseKey } from '../bible/refs'
 import { liveVerses } from '../db/db'
 import LessonRunner from '../lessons/LessonRunner'
+import { loadAiGaps } from '../lessons/aiGaps'
 import { loadTexts } from '../lessons/loadTexts'
 import { buildPracticeSteps, PRACTICE_OPTIONS, type PracticeOption } from '../lessons/practice'
 import { recordStep } from '../lessons/record'
@@ -51,6 +52,7 @@ export default function PracticePage() {
     try {
       const steps = buildPracticeSteps(option, levelIndex, keys)
       const texts = await loadTexts([...new Set(steps.flatMap((s) => s.verseKeys))])
+      if (option.kind === 'fillGaps') await loadAiGaps([...texts.values()])
       const playable = steps.filter((s) => s.verseKeys.every((k) => texts.has(k)))
       if (playable.length === 0) {
         setError('Не удалось загрузить текст стихов. Проверьте соединение и попробуйте ещё раз.')

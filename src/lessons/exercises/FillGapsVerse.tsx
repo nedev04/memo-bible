@@ -8,10 +8,15 @@ import type { StepProps } from '../types'
 export default function FillGapsVerse({ verse, settings, onAnswer }: StepProps) {
   const words = useMemo(() => flattenWords(verse.text), [verse.text])
   const pool = useMemo(() => flattenWords(verse.chapterText), [verse.chapterText])
-  const blanks = Math.max(1, Math.min(settings.blanks ?? 1, Math.floor(words.length / 4)))
+  // Пропусков может быть много: до трети слов стиха (рядом они не стоят)
+  const blanks = Math.max(1, Math.min(settings.blanks ?? 1, Math.floor(words.length / 3)))
+  const ai = useMemo(
+    () => (verse.aiGaps ? new Map(Object.entries(verse.aiGaps).map(([i, o]) => [Number(i), o] as [number, string[]])) : undefined),
+    [verse.aiGaps],
+  )
   const gaps = useMemo(
-    () => buildVerseGaps(words, pool, blanks, settings.options ?? 3),
-    [words, pool, blanks, settings.options],
+    () => buildVerseGaps(words, pool, blanks, settings.options ?? 3, Math.random, ai),
+    [words, pool, blanks, settings.options, ai],
   )
   const gapByWord = useMemo(() => new Map(gaps.map((g, i) => [g.wordIndex, i])), [gaps])
 

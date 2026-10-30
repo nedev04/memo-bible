@@ -89,6 +89,8 @@ export interface VerseText {
   /** Сколько глав в книге и сколько стихов в этой главе (для вопросов «где написано») */
   bookChapters: number
   chapterVerses: number
+  /** Варианты ответов от ИИ для пропущенных слов: номер слова в стихе → неверные варианты (если удалось получить) */
+  aiGaps?: Record<number, string[]>
 }
 
 export interface StepResult {

@@ -192,3 +192,25 @@ alter table public.verses add column if not exists stage int not null default 0;
 --   drop table if exists public.texts;
 -- Столбцы type и status в таблице lessons остались от прежней версии: приложение заполняет их одинаково.
 -- =====================================================================
+
+-- =====================================================================
+-- Версия 5: общий кэш вариантов ответов от ИИ для упражнения «Пропущенные слова».
+-- Выполните файл целиком ещё раз. Таблицу заполняет функция gap-options (см. README), пользователи могут её только читать.
+-- =====================================================================
+
+create table if not exists public.verse_options (
+  key         text        not null,                 -- ключ стиха, например rst:mat:5:7
+  text_hash   text        not null,                 -- хэш текста стиха: при изменении текста варианты считаются заново
+  items       jsonb       not null,                 -- [{ "i": номер слова, "word": "...", "options": ["...", ...] }]
+  created_by  uuid        references auth.users (id) on delete set null,
+  created_at  timestamptz not null default now(),
+  primary key (key, text_hash)
+);
+
+create index if not exists verse_options_user_idx on public.verse_options (created_by, created_at);
+
+alter table public.verse_options enable row level security;
+
+drop policy if exists "verse_options: read" on public.verse_options;
+create policy "verse_options: read" on public.verse_options
+  for select to authenticated using (true);

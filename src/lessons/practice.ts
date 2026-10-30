@@ -31,9 +31,9 @@ export const PRACTICE_OPTIONS: PracticeOption[] = [
     kind: 'fillGaps', title: 'Пропущенные слова', scored: true,
     description: 'Выбрать пропущенные слова из вариантов.',
     levels: [
-      { label: '1 пропуск', settings: { blanks: 1, options: 3 } },
-      { label: '2 пропуска', settings: { blanks: 2, options: 4 } },
-      { label: '3 пропуска', settings: { blanks: 3, options: 5 } },
+      { label: '3 пропуска', settings: { blanks: 3, options: 4 } },
+      { label: '5 пропусков', settings: { blanks: 5, options: 5 } },
+      { label: '8 пропусков', settings: { blanks: 8, options: 5 } },
     ],
   },
   {

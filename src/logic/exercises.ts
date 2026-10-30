@@ -58,7 +58,7 @@ export function visibleMask(words: FlatWord[], difficulty: Difficulty, rng: Rng 
   })
 }
 
-function matchCase(word: string, like: string): string {
+export function matchCase(word: string, like: string): string {
   const first = like.charAt(0)
   const upper = first !== first.toLowerCase()
   const head = word.charAt(0)

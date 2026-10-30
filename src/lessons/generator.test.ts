@@ -206,6 +206,26 @@ describe('пропуски в стихе', () => {
     expect(Math.abs(gaps[0].wordIndex - gaps[1].wordIndex)).toBeGreaterThan(1)
   })
 
+  it('варианты от ИИ используются, а слова с ними выбираются в первую очередь', () => {
+    const ai = new Map<number, string[]>([
+      [1, ['кроткие', 'чистые', 'плачущие']],
+      [4, ['помилуют', 'спасены', 'утешены']],
+    ])
+    const gaps = buildVerseGaps(words, pool, 2, 4, seeded(7), ai)
+    expect(gaps.map((g) => g.wordIndex)).toEqual([1, 4])
+    expect([...gaps[0].options].sort()).toEqual(['кроткие', 'милостивые', 'плачущие', 'чистые'])
+    expect([...gaps[1].options].sort()).toEqual(['помилованы', 'помилуют', 'спасены', 'утешены'])
+  })
+
+  it('если вариантов от ИИ мало, недостающие добираются из слов главы', () => {
+    const [gap] = buildVerseGaps(words, pool, 1, 4, seeded(2), new Map([[1, ['кроткие']]]))
+    expect(gap.wordIndex).toBe(1)
+    expect(gap.options).toHaveLength(4)
+    expect(gap.options).toContain('кроткие')
+    expect(gap.options).toContain('милостивые')
+    expect(new Set(gap.options.map((o) => o.toLowerCase())).size).toBe(4)
+  })
+
   it('нет вариантов — нет пропуска', () => {
     expect(buildVerseGaps(flattenWords('да'), flattenWords('да'), 1, 3)).toEqual([])
   })
@@ -233,7 +253,30 @@ describe('вопросы «где написано»', () => {
     expect(nums).toHaveLength(5)
     expect(nums).toContain(5)
     expect([...nums].sort((a, b) => a - b)).toEqual(nums)
-    expect(Math.max(...nums) - Math.min(...nums)).toBeLessThanOrEqual(8)
+    expect(Math.max(...nums) - Math.min(...nums)).toBeLessThanOrEqual(14)
+  })
+
+  it('правильный номер не жмётся к середине: он бывает на любом месте среди пяти вариантов', () => {
+    const ranks = [0, 0, 0, 0, 0]
+    const runs = 500
+    for (let i = 1; i <= runs; i++) {
+      const nums = nearNumbers(25, 50, 5, seeded(i))
+      ranks[nums.indexOf(25)]++
+    }
+    ranks.forEach((n) => expect(n / runs).toBeGreaterThan(0.1))
+    expect(ranks[2] / runs).toBeLessThan(0.3)
+  })
+
+  it('варианты номеров не всегда идут подряд, и у края книги они остаются в её пределах', () => {
+    let gaps = 0
+    for (let i = 1; i <= 100; i++) {
+      const nums = nearNumbers(2, 7, 5, seeded(i))
+      expect(Math.min(...nums)).toBeGreaterThanOrEqual(1)
+      expect(Math.max(...nums)).toBeLessThanOrEqual(7)
+      expect(new Set(nums).size).toBe(nums.length)
+      if (nums.some((n, k) => k > 0 && n - nums[k - 1] > 1)) gaps++
+    }
+    expect(gaps).toBeGreaterThan(0)
   })
 
   it('вопрос пропускается, если выбирать не из чего', () => {
@@ -349,8 +392,11 @@ describe('план урока', () => {
     expect(partialSettings(0).wordPct!).toBeLessThan(partialSettings(5).wordPct!)
     expect(partialSettings(6).wordPct).toBe(50)
     expect(partialSettings(6).letterPct!).toBeLessThanOrEqual(100)
-    expect(gapSettings(0).blanks).toBe(1)
+    expect(gapSettings(0).blanks).toBe(2)
     expect(gapSettings(6).options).toBe(5)
+    const blanks = [0, 2, 3, 5, 6].map((s) => gapSettings(s).blanks!)
+    expect([...blanks].sort((a, b) => a - b)).toEqual(blanks) // чем сильнее стих, тем больше пропусков
+    expect(blanks[4]).toBeGreaterThanOrEqual(7)
   })
 
   it('без стихов урока нет', () => {

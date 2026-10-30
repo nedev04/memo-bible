@@ -62,9 +62,10 @@ export function partialSettings(strength: number): StepSettings {
 
 /** Настройки выбора пропущенных слов: чем сильнее стих, тем больше пропусков и вариантов */
 export function gapSettings(strength: number): StepSettings {
-  if (strength <= 2) return { blanks: 1, options: 3 }
-  if (strength <= 4) return { blanks: 2, options: 4 }
-  return { blanks: 3, options: 5 }
+  if (strength <= 1) return { blanks: 2, options: 4 }
+  if (strength === 2) return { blanks: 3, options: 4 }
+  if (strength <= 4) return { blanks: 5, options: 5 }
+  return { blanks: 7, options: 5 }
 }
 
 /** Для ввода по памяти нужны стихи, которые уже можно вводить хотя бы с подсказками */
@@ -212,8 +213,8 @@ const restrict = (all: VerseState[], only?: Set<string>) => (only ? all.filter((
 function easyPractice(v: VerseState, rng: Rng, ctx: PlanContext): Candidate[] {
   const own = [v.key]
   const pool: Candidate[] = [
-    { kind: 'fillGaps', verseKeys: own, settings: { blanks: 1, options: 3 } },
-    { kind: 'fillGaps', verseKeys: own, settings: { blanks: 2, options: 3 } },
+    { kind: 'fillGaps', verseKeys: own, settings: { blanks: 2, options: 4 } },
+    { kind: 'fillGaps', verseKeys: own, settings: { blanks: 3, options: 4 } },
     { kind: 'assemble', verseKeys: own, settings: { pieces: 4 } },
     letters(v, 1),
     ...(shouldSkipWhere(v.book, ctx.recentWhere, rng) ? [] : [where(v, 1)]),

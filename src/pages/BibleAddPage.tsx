@@ -6,6 +6,7 @@ import { BOOKS, getBook } from '../bible/books'
 import { formatRange, groupVerses, TRANSLATION } from '../bible/refs'
 import type { BibleIndex } from '../bible/types'
 import { addVerses, liveVerses } from '../db/db'
+import { prefetchAiGaps } from '../lessons/aiGaps'
 
 export default function BibleAddPage() {
   const navigate = useNavigate()
@@ -68,6 +69,7 @@ export default function BibleAddPage() {
   async function save() {
     if (!book || !chapter || selected.length === 0) return
     await addVerses(selected.map((verse) => ({ book, chapter, verse })))
+    void prefetchAiGaps(selected.map(key)) // варианты ответов от ИИ готовятся в фоне
     navigate('/verses')
   }
 

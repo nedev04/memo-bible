@@ -28,7 +28,7 @@ describe('тренировка', () => {
     const steps = buildPracticeSteps(option('fillGaps'), 1, keys, seeded(1))
     expect(steps).toHaveLength(MAX_PER_VERSE)
     steps.forEach((s) => expect(s.verseKeys).toHaveLength(1))
-    expect(steps[0].settings).toEqual({ blanks: 2, options: 4 })
+    expect(steps[0].settings).toEqual({ blanks: 5, options: 5 })
     expect(new Set(steps.map((s) => s.id)).size).toBe(steps.length)
     expect(buildPracticeSteps(option('firstLetters'), 0, keys.slice(0, 2))).toHaveLength(2)
   })

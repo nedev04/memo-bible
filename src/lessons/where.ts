@@ -14,15 +14,19 @@ export interface WhereQuestion {
   options: Choice[]
 }
 
-/** Числа рядом с правильным (глава или стих), по возрастанию */
+/**
+ * Варианты номера (главы или стиха), по возрастанию. Неверные числа берутся случайно из окна вокруг правильного,
+ * причём окно сдвинуто случайным образом: правильный номер может оказаться и первым, и последним, и в середине.
+ * (Раньше брались ближайшие числа, поэтому правильный ответ почти всегда стоял посередине, и его легко было угадать.)
+ */
 export function nearNumbers(correct: number, max: number, count: number, rng: Rng = Math.random): number[] {
-  const candidates = Array.from({ length: max }, (_, i) => i + 1)
-    .filter((n) => n !== correct)
-    .map((n) => ({ n, key: Math.abs(n - correct) + rng() * 2 }))
-    .sort((a, b) => a.key - b.key)
-    .slice(0, count - 1)
-    .map((x) => x.n)
-  return [...candidates, correct].sort((a, b) => a - b)
+  const span = Math.min(max, Math.max(count * 3, 12))
+  const first = Math.max(1, correct - span + 1)
+  const last = Math.min(correct, max - span + 1)
+  const start = first + Math.floor(rng() * (last - first + 1))
+  const candidates: number[] = []
+  for (let n = start; n < start + span; n++) if (n !== correct) candidates.push(n)
+  return [...shuffle(candidates, rng).slice(0, count - 1), correct].sort((a, b) => a - b)
 }
 
 /** Книги для вариантов: две из того же завета и одна из другого, в порядке Библии */

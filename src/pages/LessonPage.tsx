@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { liveLessons, liveVerses, recentWhereBooks, saveLesson } from '../db/db'
 import { planLesson } from '../lessons/generator'
+import { loadAiGaps } from '../lessons/aiGaps'
 import { loadTexts } from '../lessons/loadTexts'
 import { recordStep } from '../lessons/record'
 import LessonRunner, { type LessonSummary } from '../lessons/LessonRunner'
@@ -36,6 +37,11 @@ export default function LessonPage() {
         const steps = planLesson(verses, Date.now(), Math.random, only, { recentWhere })
         if (steps.length === 0) return alive && setState('empty')
         const texts = await loadTexts([...new Set(steps.flatMap((s) => s.verseKeys))])
+        // Варианты ответов от ИИ для упражнений с пропусками (если не получится, будут обычные варианты)
+        const gapVerses = [...new Set(steps.filter((s) => s.kind === 'fillGaps').flatMap((s) => s.verseKeys))]
+          .map((k) => texts.get(k))
+          .filter((v): v is VerseText => v !== undefined)
+        await loadAiGaps(gapVerses)
         const playable = steps.filter((s) => s.verseKeys.every((k) => texts.has(k)))
         if (alive) setState(playable.length === 0 ? 'error' : { steps: playable, texts, replay: !!replayUid })
       } catch {

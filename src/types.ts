@@ -41,6 +41,14 @@ export interface VerseReview {
   dirty?: 0 | 1
 }
 
+/** Сохранённые на устройстве варианты ответов от ИИ для одного стиха (id: ключ стиха и хэш его текста) */
+export interface GapCacheRow {
+  id: string
+  /** Номер слова в стихе → неверные варианты */
+  items: Record<number, string[]>
+  savedAt: number
+}
+
 /** Пройденный урок. Содержимое не хранится: урок собирается заново, когда его начинают или повторяют. */
 export interface LessonRecord {
   id?: number
