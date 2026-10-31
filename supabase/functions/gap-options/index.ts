@@ -1,13 +1,16 @@
 // Функция Supabase: варианты неверных ответов для упражнения «Пропущенные слова».
-// Получает ключ и текст стиха, просит модель Claude подобрать для слов правдоподобные неверные замены,
-// сохраняет результат в общую таблицу verse_options (чтобы за каждый стих платить один раз) и возвращает его.
+// Получает ключ и текст стиха, просит языковую модель подобрать для слов правдоподобные неверные замены,
+// сохраняет результат в общую таблицу verse_options (чтобы за каждый стих обращаться к модели один раз) и возвращает его.
 //
-// Нужны секрет ANTHROPIC_API_KEY (Edge Functions → Secrets). SUPABASE_URL, SUPABASE_ANON_KEY и SUPABASE_SERVICE_ROLE_KEY
-// Supabase подставляет сам. Вызывать функцию могут только вошедшие пользователи (проверка JWT включена по умолчанию).
+// Модель: если задан секрет GEMINI_API_KEY, используется Google Gemini (бесплатный уровень, платёжные данные не нужны;
+// имя модели можно задать секретом GEMINI_MODEL). Иначе, если задан ANTHROPIC_API_KEY, используется Claude.
+// SUPABASE_URL, SUPABASE_ANON_KEY и SUPABASE_SERVICE_ROLE_KEY Supabase подставляет сам.
+// Вызывать функцию могут только вошедшие пользователи (проверка JWT включена по умолчанию).
 
 import { createClient } from 'npm:@supabase/supabase-js@2'
 
-const MODEL = 'claude-haiku-4-5-20251001'
+const CLAUDE_MODEL = 'claude-haiku-4-5-20251001'
+const DEFAULT_GEMINI_MODEL = 'gemini-flash-lite-latest'
 const DAILY_LIMIT = 300 // сколько новых стихов один пользователь может обработать за сутки
 const MAX_TEXT = 1500
 const MAX_ITEMS = 14
@@ -49,6 +52,36 @@ const SYSTEM = `Ты помогаешь учить наизусть стихи �
 Слова в стихе пронумерованы с нуля. Ответь ТОЛЬКО JSON без пояснений и без markdown:
 {"items":[{"i":<номер слова>,"word":"<слово без знаков препинания>","options":["...","...","...","..."]}]}`
 
+/** Gemini (бесплатный уровень Google AI Studio). Возвращает текст ответа или null при ошибке. */
+async function askGemini(apiKey: string, system: string, user: string): Promise<string | null> {
+  const model = Deno.env.get('GEMINI_MODEL') || DEFAULT_GEMINI_MODEL
+  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+    method: 'POST',
+    headers: { 'x-goog-api-key': apiKey, 'content-type': 'application/json' },
+    body: JSON.stringify({
+      systemInstruction: { parts: [{ text: system }] },
+      contents: [{ role: 'user', parts: [{ text: user }] }],
+      generationConfig: { responseMimeType: 'application/json', temperature: 0.8, maxOutputTokens: 4000 },
+    }),
+  })
+  if (!res.ok) return null
+  const data = await res.json().catch(() => null)
+  const parts: { text?: string }[] = data?.candidates?.[0]?.content?.parts ?? []
+  return parts.map((p) => p.text ?? '').join('') || null
+}
+
+/** Claude (платный ключ). Возвращает текст ответа или null при ошибке. */
+async function askClaude(apiKey: string, system: string, user: string): Promise<string | null> {
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+    body: JSON.stringify({ model: CLAUDE_MODEL, max_tokens: 2000, system, messages: [{ role: 'user', content: user }] }),
+  })
+  if (!res.ok) return null
+  const data = await res.json().catch(() => null)
+  return data?.content?.[0]?.text ?? null
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS })
   if (req.method !== 'POST') return json({ error: 'method' }, 405)
@@ -88,26 +121,19 @@ Deno.serve(async (req) => {
   const tokens = text.split(/\s+/).filter(Boolean)
   const numbered = tokens.map((t, i) => `${i}: ${t}`).join('\n')
 
-  const apiKey = Deno.env.get('ANTHROPIC_API_KEY')
-  if (!apiKey) return json({ error: 'not configured' }, 500)
+  const geminiKey = Deno.env.get('GEMINI_API_KEY')
+  const claudeKey = Deno.env.get('ANTHROPIC_API_KEY')
+  if (!geminiKey && !claudeKey) return json({ error: 'not configured' }, 500)
 
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
-    body: JSON.stringify({
-      model: MODEL,
-      max_tokens: 2000,
-      system: SYSTEM,
-      messages: [{ role: 'user', content: `Стих:\n${text}\n\nСлова по номерам:\n${numbered}` }],
-    }),
-  })
-  if (!res.ok) return json({ error: 'model', status: res.status }, 502)
+  const user = `Стих:\n${text}\n\nСлова по номерам:\n${numbered}`
+  let raw: string | null = null
+  if (geminiKey) raw = await askGemini(geminiKey, SYSTEM, user)
+  if (raw === null && claudeKey) raw = await askClaude(claudeKey, SYSTEM, user)
+  if (raw === null) return json({ error: 'model' }, 502)
 
   let parsed: { items?: unknown } = {}
   try {
-    const data = await res.json()
-    const raw: string = data?.content?.[0]?.text ?? ''
-    parsed = JSON.parse(raw.replace(/^```(?:json)?/i, '').replace(/```$/, '').trim())
+    parsed = JSON.parse(raw.replace(/^\s*```(?:json)?/i, '').replace(/```\s*$/, '').trim())
   } catch {
     return json({ error: 'parse' }, 502)
   }
